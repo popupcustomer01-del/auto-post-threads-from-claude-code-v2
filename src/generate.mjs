@@ -6,6 +6,7 @@ import { join } from "node:path";
 import sharp from "sharp";
 import Anthropic from "@anthropic-ai/sdk";
 import { ROOT, loadEnv, loadPersona, requireEnv } from "./config.mjs";
+import { getFreshNews } from "./news.mjs";
 
 loadEnv();
 // 文章=Claude（必須）。画像はローカルでカード生成のみ（外部API不要）。
@@ -36,6 +37,11 @@ const topic = topics.length ? pick(topics) : persona.genre;
 function currentSlot() {
   const slots = Array.isArray(persona.slots) ? persona.slots : [];
   if (!slots.length) return null;
+  // テスト/手動実行用：FORCE_SLOT=morning などで枠を固定できる
+  if (process.env.FORCE_SLOT) {
+    const forced = slots.find((s) => s.key === process.env.FORCE_SLOT);
+    if (forced) return forced;
+  }
   const h = new Date().getUTCHours();
   let best = null, bestD = 99;
   for (const s of slots) {
@@ -110,6 +116,56 @@ function sanitize(text) {
   return text.replace(/[。、]/g, " ").replace(/[ \t]+\n/g, "\n").replace(/[ \t]{2,}/g, " ").trim();
 }
 
+// --- ニュース速報を3本ツリーで生成（朝のニュース枠用）---
+// 1本目=速報フック / 2本目=初心者の使い方 / 3本目=感想＋問いかけ
+async function generateThread(article) {
+  const first = persona.persona?.first_person || "わたし";
+  const sys = `あなたはThreads運用のプロライターです。最新AIニュースを題材に「3本のツリー投稿」を書きます。
+
+【表記ルール（厳守）】
+- 句読点「。」「、」は使わない 半角スペースか改行で間を取る
+- 一人称は「${first}」で統一する
+- 各本に数字を1つ入れる
+- 各本は最大5行 短く読みやすく
+- 煽りワード禁止（${(persona.ng?.words || []).join(" / ")}）
+- タイトルや要約に無い事実は断定しない 憶測を事実のように書かない
+- リンクURL ハッシュタグ 絵文字の羅列は入れない
+
+【読者レベル（最重要・厳守）】
+- 読者はAI副業の初心者 専門用語や難しい話は避ける 中学生でもわかる言葉で
+- 必ず「初心者が今日スマホやPCですぐ試せる」具体的な使い方に落とし込む
+- ニュースが専門的な部分を含んでも 初心者に関係する1点だけを取り出して噛み砕く
+
+【3本の役割】
+1本目: 速報フック ニュースを一言で伝える これが副業初心者にどう役立つかを匂わせる
+2本目: ${first}なら具体的にどう使うか すぐ真似できる手順や例を1つ
+3本目: ${first}の率直な感想 そのうえで読者への答えやすい問いかけで締める（「〜な人います？」等）
+
+【出力形式】3本を「===」だけの行で区切って出力する 本文のみ 前置き説明は書かない`;
+
+  const usr = `ニュース見出し: ${article.title}
+出典: ${article.source}
+要約: ${article.summary || "（要約なし・見出しから推測しすぎない）"}
+発信者: ${persona.persona?.role || ""}
+ターゲット: ${JSON.stringify(persona.target || {})}
+
+上記ニュースについて 初心者がすぐ使える形で 3本のツリー投稿を書いてください`;
+
+  const res = await anthropic.messages.create({
+    model: TEXT_MODEL,
+    max_tokens: 1500,
+    system: sys,
+    messages: [{ role: "user", content: usr }],
+  });
+  const raw = res.content.filter((b) => b.type === "text").map((b) => b.text).join("").trim();
+  const parts = raw
+    .split(/^\s*={3,}\s*$/m)
+    .map((s) => sanitize(s))
+    .filter(Boolean);
+  if (parts.length < 2) throw new Error("ツリー生成に失敗（区切りが検出できず）: " + raw.slice(0, 200));
+  return parts.slice(0, 3); // 念のため最大3本
+}
+
 // --- シンプルな引用カード（本文はキャプションが主役・カードは最小の視覚アイキャッチ）---
 function escXml(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -141,41 +197,71 @@ async function makeCard(hook, handle) {
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
-// --- 実行 ---
-const text = sanitize(await generateText());
-console.log("📝 本文生成:\n" + text + "\n");
-
-// 画像は「時々」だけ：slot.image が true の枠のみカードを添付。基本はテキストのみ。
-const wantImage = slot?.image === true;
-let imagePath = null;
-
-if (wantImage) {
-  const hook = text.split("\n")[0].replace(/[？?…]/g, "").trim();
-  const handle = persona.image?.handle || "アリス";
+// 引用カードを1枚作って保存し、相対パスを返す（+古い画像の掃除）
+async function saveCard(hook) {
+  const handle = persona.image?.handle || persona.persona?.first_person || "アリス";
   const imgBuf = await makeCard(hook, handle);
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-  imagePath = `outbox/images/${stamp}.png`;
+  const rel = `outbox/images/${stamp}.png`;
   mkdirSync(join(ROOT, "outbox", "images"), { recursive: true });
-  writeFileSync(join(ROOT, imagePath), imgBuf);
-  console.log(`🖼️  引用カードを作成: ${imagePath}`);
-
-  // 古い画像を掃除（直近3枚だけ残す。投稿後は不要なため）
+  writeFileSync(join(ROOT, rel), imgBuf);
+  console.log(`🖼️  引用カードを作成: ${rel}`);
+  // 古い画像を掃除（直近3枚だけ残す）
   const KEEP = 3;
   const imgDir = join(ROOT, "outbox", "images");
   const imgs = readdirSync(imgDir).filter((f) => f.endsWith(".png")).sort();
   const stale = imgs.slice(0, Math.max(0, imgs.length - KEEP));
   for (const f of stale) unlinkSync(join(imgDir, f));
   if (stale.length) console.log(`🧹 古い画像を${stale.length}枚削除（直近${KEEP}枚を保持）`);
-} else {
-  console.log("📄 この枠はテキストのみ投稿（画像なし）");
+  return rel;
 }
 
-writeFileSync(
-  join(ROOT, "outbox", "post.json"),
-  JSON.stringify(
-    { text, imagePath, topic, style, slot: slot?.key || null, createdAt: new Date().toISOString() },
-    null,
-    2
-  )
-);
+const hookOf = (t) => t.split("\n")[0].replace(/[？?…]/g, "").trim();
+
+// --- 実行 ---
+// 朝のニュース枠 かつ 副業向けの新着あり → 3本ツリー。それ以外は従来の単発投稿。
+let article = null;
+if (slot?.news === true) {
+  try {
+    article = await getFreshNews(persona.news || {});
+  } catch (e) {
+    console.log("📰 ニュース取得でエラー → エバーグリーンに切替: " + e.message);
+  }
+}
+
+let outbox;
+if (article) {
+  // ===== ニュース速報ツリー =====
+  console.log(`🧵 ニュース枠：3本ツリーを生成します → ${article.title}`);
+  const parts = await generateThread(article);
+  console.log("📝 ツリー生成:\n" + parts.map((p, i) => `【${i + 1}】\n${p}`).join("\n\n") + "\n");
+  const thread = parts.map((t) => ({ text: t, imagePath: null }));
+  // 先頭だけカードを添付（slot.image が true のとき）
+  if (slot?.image === true) thread[0].imagePath = await saveCard(hookOf(parts[0]));
+  else console.log("📄 テキストのみツリー（画像なし）");
+  outbox = {
+    thread,
+    kind: "news",
+    source: { title: article.title, link: article.link, source: article.source },
+    slot: slot?.key || null,
+    createdAt: new Date().toISOString(),
+  };
+} else {
+  // ===== 従来の単発投稿（エバーグリーン）=====
+  const text = sanitize(await generateText());
+  console.log("📝 本文生成:\n" + text + "\n");
+  let imagePath = null;
+  if (slot?.image === true) imagePath = await saveCard(hookOf(text));
+  else console.log("📄 この枠はテキストのみ投稿（画像なし）");
+  outbox = {
+    text,
+    imagePath,
+    topic,
+    style,
+    slot: slot?.key || null,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+writeFileSync(join(ROOT, "outbox", "post.json"), JSON.stringify(outbox, null, 2));
 console.log("✅ 生成完了 → 次は src/post.mjs で公開します");

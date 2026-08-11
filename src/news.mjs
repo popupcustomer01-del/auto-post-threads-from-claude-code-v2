@@ -72,9 +72,21 @@ const DEFAULT_FEEDS = [
   "https://rss.itmedia.co.jp/rss/2.0/aiplus.xml",
 ];
 
+// ★副業初心者が「今日すぐ使える」話題を加点（企業名や"AI"だけの汎用語は入れない）
 const DEFAULT_KEYWORDS = [
-  "GPT", "ChatGPT", "OpenAI", "Claude", "Anthropic", "Gemini", "Google", "Llama", "Meta",
-  "生成AI", "AI", "モデル", "リリース", "発表", "アップデート", "新機能", "無料", "公開", "対応",
+  "ChatGPT", "Gemini", "Copilot", "画像生成", "動画生成", "音声", "文字起こし",
+  "文章", "ライティング", "翻訳", "プロンプト", "テンプレート", "Canva", "Notion",
+  "無料", "無料化", "使い方", "使ってみた", "新機能", "アプリ", "スマホ",
+  "個人", "クリエイター", "副業", "時短", "自動化", "日本語対応", "初心者",
+];
+
+// ★難しすぎ/副業に関係ない話題は除外（1つでも含めば不採用）
+const DEFAULT_EXCLUDE = [
+  "セキュリティ", "サイバー", "防御", "脆弱性", "攻撃", "ハッキング",
+  "規制", "法規制", "訴訟", "裁判", "著作権侵害", "軍事", "政府", "選挙",
+  "決算", "業績", "出資", "資金調達", "買収", "上場", "株価", "IPO", "特許",
+  "半導体", "GPU", "データセンター", "インフラ", "量子",
+  "研究", "論文", "学会", "エンタープライズ", "企業向け", "API仕様",
 ];
 
 // 記事にキーワードスコアを付ける（タイトルは重み2・要約は重み1）
@@ -89,12 +101,19 @@ function score(article, keywords) {
   return s;
 }
 
+// 除外ワードを1つでも含むか（タイトル or 要約）
+function isExcluded(article, excludes) {
+  const hay = `${article.title || ""} ${article.summary || ""}`;
+  return excludes.some((k) => hay.includes(k));
+}
+
 // 直近 freshHours 時間の新着から、スコア最上位（同点は新しい方）を1件返す。無ければ null。
 export async function getFreshNews(cfg = {}) {
   const feeds = Array.isArray(cfg.feeds) && cfg.feeds.length ? cfg.feeds : DEFAULT_FEEDS;
   const keywords = Array.isArray(cfg.keywords) && cfg.keywords.length ? cfg.keywords : DEFAULT_KEYWORDS;
+  const excludes = Array.isArray(cfg.exclude) && cfg.exclude.length ? cfg.exclude : DEFAULT_EXCLUDE;
   const freshHours = Number(cfg.fresh_hours) > 0 ? Number(cfg.fresh_hours) : 24;
-  const minScore = Number(cfg.min_score) >= 0 ? Number(cfg.min_score) : 2;
+  const minScore = Number(cfg.min_score) >= 0 ? Number(cfg.min_score) : 3;
 
   const now = Date.now();
   const cutoff = now - freshHours * 3600 * 1000;
@@ -107,17 +126,23 @@ export async function getFreshNews(cfg = {}) {
     return null;
   }
 
+  // ① 難しすぎ/無関係な話題を除外 → ② 副業キーワードでスコアリング → ③ min_score以上のみ
+  const excluded = fresh.filter((a) => isExcluded(a, excludes));
+  if (excluded.length) {
+    console.log(`📰 除外(難しい/無関係): ${excluded.length}件 → 例「${excluded[0].title}」`);
+  }
   const ranked = fresh
+    .filter((a) => !isExcluded(a, excludes))
     .map((a) => ({ ...a, _score: score(a, keywords) }))
     .filter((a) => a._score >= minScore)
     .sort((a, b) => b._score - a._score || b.date - a.date);
 
   if (!ranked.length) {
-    console.log(`📰 新着はあるがキーワード該当なし（min_score=${minScore}）→ ニュースは見送り`);
+    console.log(`📰 副業向けの新着なし（min_score=${minScore}）→ 今日はHow-toにフォールバック`);
     return null;
   }
 
   const top = ranked[0];
-  console.log(`📰 ニュース候補: [${top.source}] ${top.title}（score=${top._score}）`);
+  console.log(`📰 ニュース候補(副業向け): [${top.source}] ${top.title}（score=${top._score}）`);
   return { title: top.title, link: top.link, summary: top.summary, source: top.source };
 }

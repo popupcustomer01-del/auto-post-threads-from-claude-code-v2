@@ -59,15 +59,16 @@ slots:
     image: true               # この枠だけシンプルな引用カードを添付（他はテキストのみ）
     news: true                # ★副業初心者が使える新着AIニュースだけ3本ツリー化。無ければHow-to
     guide: "AIの時短術や具体的な手順を1つ 今日すぐ使える 箇条書き中心 数字を入れる"
-  - key: "evening"          # 夕：共感・ストーリー（返信・ファン化狙い）
+  - key: "evening"          # 夕：ノウハウ長文ツリー（保存・フォロー狙い）
     jst: "18:00"
     utc_hour: 9
-    role: "共感・ストーリー"
-    goal: "返信・関係構築・ファン化"
+    role: "ノウハウ・保存"
+    goal: "保存・フォロー・プロフ流入"
     style: "⑦長文ストーリー型"
     closing: "soft"
     image: false              # テキストのみ
-    guide: "アリス自身の実体験や失敗談 感情を込めた一人称 ビフォーアフター 押し売りしない"
+    thread: true              # ★共感フック→①〜⑤の具体ノウハウ→フォロー誘導 の長文ツリー(2〜4本)
+    guide: "1つのテーマを深掘り 番号付きの具体ノウハウを並べる 最後はやわらかいフォロー誘導"
   - key: "night"            # 夜：問いかけ・エンゲージ（返信集中→拡散狙い）
     jst: "21:00"
     utc_hour: 12
@@ -160,11 +161,22 @@ ng:
     - "絶対に稼げる／絶対に損しない"
     - "月100万確定"
 
-# --- 8. 画像（引用カード）設定 -------------------------------
-# 現在は外部API不要。朝の枠(image: true)だけ、本文1行目を大きく置いた
-# ローカル生成の引用カードを添付します（src/generate.mjs の makeCard）。
-# コードが読むのは handle だけ。写真素材/文字入れ/AI顔生成は使いません。
+# --- 8. 画像（Pexels厳選写真）設定 --------------------------
+# 朝の枠(image: true)だけ、下の photos から1枚を日付で決定的にローテして添付します（src/pexels.mjs）。
+#   - photos は人手で目視確認した「人物・他社ロゴなし」のクリーンな写真URLだけを入れる
+#   - ライブ検索はブランド物・人物の混入が避けられないため使わない（photos があれば検索しない）
+#   - photos を空にすると、フォールバックで queries のライブ検索に切り替わる（非推奨）
+#   URLの足し方: pexels.com で写真を選び、ID を使って次の形にする
+#     https://images.pexels.com/photos/<ID>/pexels-photo-<ID>.jpeg?auto=compress&cs=tinysrgb&fit=crop&w=1080&h=1080
 image:
-  handle: "アリス"                # カード左下に入れる署名
-  kicker: "AI × 副業"             # カード左上の小見出し（ニッチ一貫性の演出）
+  pexels:
+    photos:                        # 厳選ローテ（在宅ワーク感・清潔感・コーヒー中心）
+      - "https://images.pexels.com/photos/27860686/pexels-photo-27860686.jpeg?auto=compress&cs=tinysrgb&fit=crop&w=1080&h=1080"
+      - "https://images.pexels.com/photos/31711944/pexels-photo-31711944.jpeg?auto=compress&cs=tinysrgb&fit=crop&w=1080&h=1080"
+      - "https://images.pexels.com/photos/26985929/pexels-photo-26985929.jpeg?auto=compress&cs=tinysrgb&fit=crop&w=1080&h=1080"
+      - "https://images.pexels.com/photos/4913342/pexels-photo-4913342.jpeg?auto=compress&cs=tinysrgb&fit=crop&w=1080&h=1080"
+    # queries はフォールバック用（photos が空のときだけ使用）
+    queries:
+      - "coffee"
+      - "office"
 # ============================================================

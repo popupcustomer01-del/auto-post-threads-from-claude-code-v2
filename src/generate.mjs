@@ -1,12 +1,12 @@
-// 本文生成（Claude）＋ 時々シンプルな引用カード（sharpのみ・無料）
+// 本文生成（Claude）＋ 朝の枠だけ Pexels のストック写真を1枚添付。
 // 調査結論に基づき「テキスト中心・画像は時々・AI顔合成/文字焼き込みはしない」方針。
-// 出力: outbox/post.json（本文・imagePath は画像なしなら null）
-import { mkdirSync, writeFileSync, readdirSync, unlinkSync } from "node:fs";
+// 出力: outbox/post.json（本文・imageUrl は画像なしなら null）
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import sharp from "sharp";
 import Anthropic from "@anthropic-ai/sdk";
 import { ROOT, loadEnv, loadPersona, requireEnv } from "./config.mjs";
 import { getFreshNews } from "./news.mjs";
+import { getStockPhoto } from "./pexels.mjs";
 
 loadEnv();
 // 文章=Claude（必須）。画像はローカルでカード生成のみ（外部API不要）。
@@ -166,66 +166,66 @@ async function generateThread(article) {
   return parts.slice(0, 3); // 念のため最大3本
 }
 
-// --- シンプルな引用カード（本文はキャプションが主役・カードは最小の視覚アイキャッチ）---
-function escXml(s) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+// --- ノウハウ長文ツリーを生成（ニュース不要・トピック起点）---
+// 例:「あっこの人◯◯だな」系の共感フック → ①〜⑤の具体ノウハウ → まとめ＋フォロー誘導。
+// 本数はAIに任せる（2〜4本）。1本目のフックは短く 中間は箇条書きで長くてOK。
+async function generateValueThread(topic) {
+  const first = persona.persona?.first_person || "わたし";
+  const sys = `あなたはThreads運用のプロライターです。1つのテーマを「2〜4本のツリー投稿」に分けて書きます。
+
+【表記ルール（厳守）】
+- 句読点「。」「、」は使わない 半角スペースか改行で間を取る
+- 一人称は「${first}」で統一する
+- 数字を必ず1つ以上入れる（①②③のような番号は数字に数えない）
+- 煽りワード禁止（${(persona.ng?.words || []).join(" / ")}）
+- リンクURL ハッシュタグ 絵文字の羅列は入れない（絵文字は多くて1本に1個まで）
+
+【読者レベル（最重要・厳守）】
+- 読者はAI副業の初心者 専門用語や難しい話は避ける 中学生でもわかる言葉で
+- 抽象論で終わらせず 今日すぐ試せる具体アクションに落とす
+
+【ツリーの型（お手本）】
+- 1本目（フック・短く）: 「あっこの人◯◯だな」系の気づき や 本音 悩み 意外性で「続きを読みたい」を作る 1〜3行で止める 具体的な数字や中身はまだ出さず匂わせる
+- 中間の本（1〜2本・ここが主役・長くてOK）: ①②③…と番号付きで具体ノウハウを並べる 各項目は「見出し1行＋補足1〜2行」 5〜7項目まで
+- 最終の本: 全体の要点を一言でまとめ 最後に「フォローして一緒に頑張ろう」等のやわらかいフォロー誘導 または答えやすい問いかけで締める
+
+【本数の決め方】
+- 中身が薄いテーマなら2本 具体項目が多いなら3〜4本に自然に分ける 無理に引き伸ばさない
+
+【出力形式】各本を「===」だけの行で区切って出力する 本文のみ 前置き説明は書かない`;
+
+  const usr = `テーマ: ${topic}
+発信者の立場: ${persona.persona?.role || ""} / 得意: ${persona.persona?.strength || ""} / 実体験: ${persona.persona?.episode || ""}
+ターゲット: ${JSON.stringify(persona.target || {})}
+避ける話題: ${(persona.ng?.topics || []).join(", ")}
+
+上記テーマで お手本の型に沿って ノウハウ長文ツリーを書いてください`;
+
+  const res = await anthropic.messages.create({
+    model: TEXT_MODEL,
+    max_tokens: 2000,
+    system: sys,
+    messages: [{ role: "user", content: usr }],
+  });
+  const raw = res.content.filter((b) => b.type === "text").map((b) => b.text).join("").trim();
+  const parts = raw
+    .split(/^\s*={3,}\s*$/m)
+    .map((s) => sanitize(s))
+    .filter(Boolean);
+  if (parts.length < 2) throw new Error("ノウハウツリー生成に失敗（区切りが検出できず）: " + raw.slice(0, 200));
+  return parts.slice(0, 4); // 最大4本
 }
 
-// 本文1行目（フック）を主役に、左罫線＋カテゴリ見出し＋署名の「編集的」カードを作る。
-// ねらい: まとめbot風の“中央にベタ置き”を避け、雑誌の引用のような意図あるレイアウトに。
-// フォント: CIでは Noto Sans CJK JP を入れる（workflow参照）。無い環境向けにfallbackも列挙。
-const CARD_FONT = "'Noto Sans CJK JP','Hiragino Sans','Yu Gothic','Yu Gothic UI','Meiryo',sans-serif";
-async function makeCard(hook, handle, kicker = "AI × 副業") {
-  const W = 1080;
-  const BG = "#F5F1E8", INK = "#2E2A26", ACCENT = "#C7743B", SUB = "#8A8378", RULE = "#E2DBCC";
-
-  // フック整形＆折り返し（日本語は文字数ベース。3行を超える分は末尾を…で省略）
-  const clean = hook.replace(/[「」“”"']/g, "").trim();
-  const perLine = 12, maxLines = 3;
-  const all = [];
-  for (let i = 0; i < clean.length; i += perLine) all.push(clean.slice(i, i + perLine));
-  const lines = all.slice(0, maxLines);
-  if (all.length > maxLines) lines[maxLines - 1] = lines[maxLines - 1].slice(0, perLine - 1) + "…";
-
-  const textX = 168, firstY = 402, lineH = 108;
-  const tspans = lines
-    .map((l, i) => `<tspan x="${textX}" y="${firstY + i * lineH}">${escXml(l)}</tspan>`)
-    .join("");
-  const barH = lines.length * lineH + 6;
-
-  const svg = `<svg width="${W}" height="${W}" xmlns="http://www.w3.org/2000/svg">
-    <rect width="${W}" height="${W}" fill="${BG}"/>
-    <text x="120" y="250" font-family="${CARD_FONT}" font-weight="bold" font-size="34" letter-spacing="6" fill="${ACCENT}">${escXml(kicker)}</text>
-    <rect x="120" y="336" width="8" height="${barH}" rx="4" fill="${ACCENT}"/>
-    <text text-anchor="start" font-family="${CARD_FONT}" font-weight="bold" font-size="70" fill="${INK}">${tspans}</text>
-    <line x1="120" y1="${W - 150}" x2="${W - 120}" y2="${W - 150}" stroke="${RULE}" stroke-width="2"/>
-    <circle cx="130" cy="${W - 99}" r="9" fill="${ACCENT}"/>
-    <text x="154" y="${W - 89}" font-family="${CARD_FONT}" font-size="36" fill="${SUB}">${escXml(handle)}</text>
-  </svg>`;
-  return sharp(Buffer.from(svg)).png().toBuffer();
+// --- 画像（Pexelsのストック写真）---
+// image: true の枠だけ、Pexelsから在宅ワーク感の写真を1枚選んで公開URLを返す。
+// 乱数を使わず日付＋時刻をseedにして毎日ちがう写真にする。キー無し/失敗時は null。
+async function pickPhotoUrl() {
+  const now = new Date();
+  const dayOfYear = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000);
+  const seed = dayOfYear * 24 + now.getUTCHours();
+  const photo = await getStockPhoto(persona.image?.pexels || {}, seed);
+  return photo?.url || null;
 }
-
-// 引用カードを1枚作って保存し、相対パスを返す（+古い画像の掃除）
-async function saveCard(hook) {
-  const handle = persona.image?.handle || persona.persona?.first_person || "アリス";
-  const kicker = persona.image?.kicker || "AI × 副業";
-  const imgBuf = await makeCard(hook, handle, kicker);
-  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-  const rel = `outbox/images/${stamp}.png`;
-  mkdirSync(join(ROOT, "outbox", "images"), { recursive: true });
-  writeFileSync(join(ROOT, rel), imgBuf);
-  console.log(`🖼️  引用カードを作成: ${rel}`);
-  // 古い画像を掃除（直近3枚だけ残す）
-  const KEEP = 3;
-  const imgDir = join(ROOT, "outbox", "images");
-  const imgs = readdirSync(imgDir).filter((f) => f.endsWith(".png")).sort();
-  const stale = imgs.slice(0, Math.max(0, imgs.length - KEEP));
-  for (const f of stale) unlinkSync(join(imgDir, f));
-  if (stale.length) console.log(`🧹 古い画像を${stale.length}枚削除（直近${KEEP}枚を保持）`);
-  return rel;
-}
-
-const hookOf = (t) => t.split("\n")[0].replace(/[？?…]/g, "").trim();
 
 // --- 実行 ---
 // 朝のニュース枠 かつ 副業向けの新着あり → 3本ツリー。それ以外は従来の単発投稿。
@@ -244,9 +244,9 @@ if (article) {
   console.log(`🧵 ニュース枠：3本ツリーを生成します → ${article.title}`);
   const parts = await generateThread(article);
   console.log("📝 ツリー生成:\n" + parts.map((p, i) => `【${i + 1}】\n${p}`).join("\n\n") + "\n");
-  const thread = parts.map((t) => ({ text: t, imagePath: null }));
-  // 先頭だけカードを添付（slot.image が true のとき）
-  if (slot?.image === true) thread[0].imagePath = await saveCard(hookOf(parts[0]));
+  const thread = parts.map((t) => ({ text: t, imageUrl: null }));
+  // 先頭だけ写真を添付（slot.image が true のとき）
+  if (slot?.image === true) thread[0].imageUrl = await pickPhotoUrl();
   else console.log("📄 テキストのみツリー（画像なし）");
   outbox = {
     thread,
@@ -255,16 +255,33 @@ if (article) {
     slot: slot?.key || null,
     createdAt: new Date().toISOString(),
   };
+} else if (slot?.thread === true) {
+  // ===== ノウハウ長文ツリー（ニュース不要・トピック起点）=====
+  console.log(`🧵 ノウハウ枠：長文ツリーを生成します → ${topic}`);
+  const parts = await generateValueThread(topic);
+  console.log(`📝 ツリー生成（全${parts.length}本）:\n` + parts.map((p, i) => `【${i + 1}】\n${p}`).join("\n\n") + "\n");
+  const thread = parts.map((t) => ({ text: t, imageUrl: null }));
+  // 先頭だけ写真を添付（slot.image が true のとき）
+  if (slot?.image === true) thread[0].imageUrl = await pickPhotoUrl();
+  else console.log("📄 テキストのみツリー（画像なし）");
+  outbox = {
+    thread,
+    kind: "value",
+    topic,
+    style,
+    slot: slot?.key || null,
+    createdAt: new Date().toISOString(),
+  };
 } else {
   // ===== 従来の単発投稿（エバーグリーン）=====
   const text = sanitize(await generateText());
   console.log("📝 本文生成:\n" + text + "\n");
-  let imagePath = null;
-  if (slot?.image === true) imagePath = await saveCard(hookOf(text));
+  let imageUrl = null;
+  if (slot?.image === true) imageUrl = await pickPhotoUrl();
   else console.log("📄 この枠はテキストのみ投稿（画像なし）");
   outbox = {
     text,
-    imagePath,
+    imageUrl,
     topic,
     style,
     slot: slot?.key || null,

@@ -1,7 +1,7 @@
 {
   "name": "auto-threads",
   "version": "1.0.0",
-  "description": "Threads 完全自動投稿（本文=Claude生成 + テキスト中心/朝だけローカル引用カード + GitHub Actions）",
+  "description": "Threads 完全自動投稿（本文=Claude生成 + テキスト中心/朝だけPexels写真 + GitHub Actions）",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -14,7 +14,6 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.68.0",
-    "js-yaml": "^4.1.0",
-    "sharp": "^0.33.5"
+    "js-yaml": "^4.1.0"
   }
 }

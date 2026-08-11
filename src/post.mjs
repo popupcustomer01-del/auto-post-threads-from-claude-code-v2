@@ -1,5 +1,5 @@
 // outbox/post.json を読み、画像付きで Threads に公開する（完全自動公開）
-// 画像URLは GitHub の raw（コミットSHA固定）を使う → キャッシュ事故を避けられる
+// 画像は Pexels等の公開URL(imageUrl)をそのまま使う。旧方式のローカル画像(imagePath)にも後方互換で対応。
 import { readFileSync, existsSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { join } from "node:path";
@@ -18,16 +18,10 @@ if (!existsSync(outboxPath)) {
 }
 const post = JSON.parse(readFileSync(outboxPath, "utf8"));
 
-// --- 投稿本数を正規化：単発でもツリー(thread配列)でも同じ形で扱う ---
-// thread: [{ text, imagePath }, ...] があればツリー投稿。無ければ単発 { text, imagePath }。
-const segments = Array.isArray(post.thread) && post.thread.length
-  ? post.thread.map((s) => ({ text: s.text, imagePath: s.imagePath || null }))
-  : [{ text: post.text, imagePath: post.imagePath || null }];
-
-// --- 画像の公開URLを決める ---
-// 優先: THREADS_IMAGE_BASE_URL（任意のホスティングを使う場合）
-// 既定: GitHub raw（owner/repo は GITHUB_REPOSITORY、SHAは現在のHEAD＝push済みコミット）
-function imageUrl(imagePath) {
+// --- 各投稿の公開画像URLを決める ---
+// 優先: imageUrl（Pexels等の公開URL。そのまま使う）
+// 後方互換: imagePath（ローカル画像）→ GitHub raw の公開URLに変換
+function rawGithubUrl(imagePath) {
   const path = imagePath.replace(/\\/g, "/");
   if (process.env.THREADS_IMAGE_BASE_URL) {
     return `${process.env.THREADS_IMAGE_BASE_URL.replace(/\/$/, "")}/${path}`;
@@ -41,6 +35,17 @@ function imageUrl(imagePath) {
   const sha = execSync("git rev-parse HEAD", { cwd: ROOT }).toString().trim();
   return `https://raw.githubusercontent.com/${repo}/${sha}/${path}`;
 }
+function resolveImage(s) {
+  if (s.imageUrl) return s.imageUrl;               // Pexels等の公開URL
+  if (s.imagePath) return rawGithubUrl(s.imagePath); // 旧: ローカル画像
+  return null;
+}
+
+// --- 投稿本数を正規化：単発でもツリー(thread配列)でも同じ形で扱う ---
+// 各要素は { text, image }（image は公開URL or null）。
+const segments = Array.isArray(post.thread) && post.thread.length
+  ? post.thread.map((s) => ({ text: s.text, image: resolveImage(s) }))
+  : [{ text: post.text, image: resolveImage(post) }];
 
 async function getUserId() {
   // トークンから正しいユーザーIDを取得（手動設定のズレを根本的に防ぐ）。
@@ -61,14 +66,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // 1本を公開する。replyToId があれば、その投稿へのリプライ（＝ツリーの続き）になる。
 // 戻り値: 公開された post_id（次の本の reply_to_id に使う）。
-async function publishOne({ text, imagePath }, replyToId) {
+async function publishOne({ text, image }, replyToId) {
   // Step 1: コンテナ作成（画像があれば IMAGE、なければ TEXT）
   const params = { access_token: TOKEN, text };
-  if (imagePath) {
-    const url = imageUrl(imagePath);
-    console.log("🖼️  画像URL: " + url);
+  if (image) {
+    console.log("🖼️  画像URL: " + image);
     params.media_type = "IMAGE";
-    params.image_url = url;
+    params.image_url = image;
   } else {
     console.log("📄 テキストのみ");
     params.media_type = "TEXT";
@@ -90,7 +94,7 @@ async function publishOne({ text, imagePath }, replyToId) {
   }
 
   // Step 2: 公開。画像は取り込みに時間がかかるため長めに待つ（公式推奨: 画像は最低30秒）
-  const waitMs = imagePath ? 30000 : 3000;
+  const waitMs = image ? 30000 : 3000;
   console.log(`⏳ ${waitMs / 1000}秒待ってから公開します`);
   await sleep(waitMs);
   const r2 = await fetch(`${BASE}/${userId}/threads_publish`, {

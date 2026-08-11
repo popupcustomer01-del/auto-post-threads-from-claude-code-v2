@@ -161,22 +161,26 @@ ng:
     - "絶対に稼げる／絶対に損しない"
     - "月100万確定"
 
-# --- 8. 画像（Pexels厳選写真）設定 --------------------------
-# 朝の枠(image: true)だけ、下の photos から1枚を日付で決定的にローテして添付します（src/pexels.mjs）。
-#   - photos は人手で目視確認した「人物・他社ロゴなし」のクリーンな写真URLだけを入れる
-#   - ライブ検索はブランド物・人物の混入が避けられないため使わない（photos があれば検索しない）
-#   - photos を空にすると、フォールバックで queries のライブ検索に切り替わる（非推奨）
-#   URLの足し方: pexels.com で写真を選び、ID を使って次の形にする
-#     https://images.pexels.com/photos/<ID>/pexels-photo-<ID>.jpeg?auto=compress&cs=tinysrgb&fit=crop&w=1080&h=1080
+# --- 8. 画像（Pexelsライブ検索）設定 -----------------------
+# 朝の枠(image: true)だけ、毎回 Pexels を検索して写真を1枚添付します（src/pexels.mjs）。
+#   - search: true = 毎回ライブ検索。人物・他社ロゴ・ブランド物は alt で自動除外（BLOCK_WORDS）
+#   - 検索が使えない/全部除外された日は、下の photos に自動退避（保険）
+#   - 乱数を使わず日付で決定的に選ぶ（毎日ちがう写真）
+#   - orientation は指定しない（正方形固定はブランド撮影シリーズに偏るため）。最後にURLで1080角クロップ
 image:
   pexels:
-    photos:                        # 厳選ローテ（在宅ワーク感・清潔感・コーヒー中心）
+    search: true                   # ← 毎回検索する。false/未指定なら photos の厳選ローテになる
+    per_page: 20                   # 検索の取得件数（多いほど除外後の選択肢が増える）
+    queries:                       # 検索ワード（英語推奨・簡潔に）。人物/ブランドが出にくい物・飲み物中心
+      - "coffee"
+      - "latte"
+      - "tea"
+      - "office"
+      - "workspace"
+      - "notebook"
+    photos:                        # 退避用（検索が使えない日だけ使う。目視確認済みのクリーン写真）
       - "https://images.pexels.com/photos/27860686/pexels-photo-27860686.jpeg?auto=compress&cs=tinysrgb&fit=crop&w=1080&h=1080"
       - "https://images.pexels.com/photos/31711944/pexels-photo-31711944.jpeg?auto=compress&cs=tinysrgb&fit=crop&w=1080&h=1080"
       - "https://images.pexels.com/photos/26985929/pexels-photo-26985929.jpeg?auto=compress&cs=tinysrgb&fit=crop&w=1080&h=1080"
       - "https://images.pexels.com/photos/4913342/pexels-photo-4913342.jpeg?auto=compress&cs=tinysrgb&fit=crop&w=1080&h=1080"
-    # queries はフォールバック用（photos が空のときだけ使用）
-    queries:
-      - "coffee"
-      - "office"
 # ============================================================

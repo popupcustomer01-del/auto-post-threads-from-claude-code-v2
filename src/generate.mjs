@@ -170,29 +170,37 @@ async function generateThread(article) {
 function escXml(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
-function wrapLine(text, perLine, maxLines) {
-  const out = [];
-  for (let i = 0; i < text.length && out.length < maxLines; i += perLine) {
-    out.push(text.slice(i, i + perLine));
-  }
-  return out;
-}
 
-// 本文1行目（フック）だけを大きく置いた、余白多めのミニマルなカードを作る
-async function makeCard(hook, handle) {
+// 本文1行目（フック）を主役に、左罫線＋カテゴリ見出し＋署名の「編集的」カードを作る。
+// ねらい: まとめbot風の“中央にベタ置き”を避け、雑誌の引用のような意図あるレイアウトに。
+// フォント: CIでは Noto Sans CJK JP を入れる（workflow参照）。無い環境向けにfallbackも列挙。
+const CARD_FONT = "'Noto Sans CJK JP','Hiragino Sans','Yu Gothic','Yu Gothic UI','Meiryo',sans-serif";
+async function makeCard(hook, handle, kicker = "AI × 副業") {
   const W = 1080;
-  const line = hook.replace(/[「」“”"']/g, "").trim();
-  const lines = wrapLine(line, 13, 3);
-  const lineH = 96;
-  const startY = W / 2 - ((lines.length - 1) * lineH) / 2 + 24;
+  const BG = "#F5F1E8", INK = "#2E2A26", ACCENT = "#C7743B", SUB = "#8A8378", RULE = "#E2DBCC";
+
+  // フック整形＆折り返し（日本語は文字数ベース。3行を超える分は末尾を…で省略）
+  const clean = hook.replace(/[「」“”"']/g, "").trim();
+  const perLine = 12, maxLines = 3;
+  const all = [];
+  for (let i = 0; i < clean.length; i += perLine) all.push(clean.slice(i, i + perLine));
+  const lines = all.slice(0, maxLines);
+  if (all.length > maxLines) lines[maxLines - 1] = lines[maxLines - 1].slice(0, perLine - 1) + "…";
+
+  const textX = 168, firstY = 402, lineH = 108;
   const tspans = lines
-    .map((l, i) => `<tspan x="${W / 2}" y="${startY + i * lineH}">${escXml(l)}</tspan>`)
+    .map((l, i) => `<tspan x="${textX}" y="${firstY + i * lineH}">${escXml(l)}</tspan>`)
     .join("");
+  const barH = lines.length * lineH + 6;
+
   const svg = `<svg width="${W}" height="${W}" xmlns="http://www.w3.org/2000/svg">
-    <rect width="${W}" height="${W}" fill="#F4F1EA"/>
-    <rect x="90" y="150" width="72" height="10" rx="5" fill="#C7743B"/>
-    <text text-anchor="middle" font-family="'Hiragino Sans','Noto Sans JP','Yu Gothic',sans-serif" font-weight="bold" font-size="66" fill="#2B2B2B">${tspans}</text>
-    <text x="${W - 90}" y="${W - 80}" text-anchor="end" font-family="sans-serif" font-size="34" fill="#8A8378">${escXml(handle)}</text>
+    <rect width="${W}" height="${W}" fill="${BG}"/>
+    <text x="120" y="250" font-family="${CARD_FONT}" font-weight="bold" font-size="34" letter-spacing="6" fill="${ACCENT}">${escXml(kicker)}</text>
+    <rect x="120" y="336" width="8" height="${barH}" rx="4" fill="${ACCENT}"/>
+    <text text-anchor="start" font-family="${CARD_FONT}" font-weight="bold" font-size="70" fill="${INK}">${tspans}</text>
+    <line x1="120" y1="${W - 150}" x2="${W - 120}" y2="${W - 150}" stroke="${RULE}" stroke-width="2"/>
+    <circle cx="130" cy="${W - 99}" r="9" fill="${ACCENT}"/>
+    <text x="154" y="${W - 89}" font-family="${CARD_FONT}" font-size="36" fill="${SUB}">${escXml(handle)}</text>
   </svg>`;
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
@@ -200,7 +208,8 @@ async function makeCard(hook, handle) {
 // 引用カードを1枚作って保存し、相対パスを返す（+古い画像の掃除）
 async function saveCard(hook) {
   const handle = persona.image?.handle || persona.persona?.first_person || "アリス";
-  const imgBuf = await makeCard(hook, handle);
+  const kicker = persona.image?.kicker || "AI × 副業";
+  const imgBuf = await makeCard(hook, handle, kicker);
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
   const rel = `outbox/images/${stamp}.png`;
   mkdirSync(join(ROOT, "outbox", "images"), { recursive: true });

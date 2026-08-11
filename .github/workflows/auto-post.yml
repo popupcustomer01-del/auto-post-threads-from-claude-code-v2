@@ -7,7 +7,17 @@ on:
     - cron: "0 22 * * *" # 07:00 JST（朝の通勤・始業前）
     - cron: "0 9 * * *"  # 18:00 JST（夜のゴールデンタイム開始）
     - cron: "0 12 * * *" # 21:00 JST（夜のピーク）
-  workflow_dispatch: {} # 手動実行ボタン（テスト用）
+  workflow_dispatch: # 手動実行ボタン（テスト用）
+    inputs:
+      slot:
+        description: "テストする投稿枠（morning=ニュース+カード / evening / night=テキストのみ）"
+        required: false
+        default: "morning"
+        type: choice
+        options:
+          - morning
+          - evening
+          - night
 
 # 生成画像をリポジトリに push するために書き込み権限が必要
 permissions:
@@ -21,19 +31,23 @@ jobs:
   post:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install deps
         run: npm ci || npm install
+
+      - name: 日本語フォントを導入（カード画像の文字化け防止）
+        run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
 
       - name: 本文＋（時々）カード画像を生成
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }} # 文章生成(Claude)・必須
           ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}         # 任意(既定 claude-opus-4-8)
+          FORCE_SLOT: ${{ github.event.inputs.slot }}          # 手動実行時のみ枠を固定（cronでは空＝時刻で自動選択）
         run: npm run generate
 
       - name: 画像をコミット＆プッシュ（raw URL用）

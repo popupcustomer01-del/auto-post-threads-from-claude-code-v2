@@ -1,16 +1,16 @@
 # auto-threads — Threads 完全自動投稿
 
-本文をAIが生成し、ハイブリッド画像（Pexels素材 → gpt-image-1で加工 → 文字入れ）を付けて、
-**GitHub Actions が毎日決まった時刻に自動で公開**します。人の手は不要です。
+本文を **Claude が生成**し、基本はテキストのみ（朝の枠だけローカルで簡単な引用カードを添付）、
+**GitHub Actions が毎日決まった時刻に自動で公開**します。画像生成の外部API（OpenAI/Pexels）は使いません。
 
 ## 仕組み
 
 ```
 GitHub Actions（cron）
-  → src/generate.mjs : persona.yml を読み、本文＋画像を生成（outbox/へ）
-  → 画像をリポジトリに commit & push
-  → src/post.mjs     : raw.githubusercontent.com のURLで Threads に画像付き公開
-  → src/refreshToken.mjs : 週1でトークンを自動更新（60日失効対策）
+  → src/generate.mjs : persona.yml を読み、Claude で本文を生成（朝枠のみローカルで引用カード画像も）→ outbox/
+  → （画像がある時だけ）画像をリポジトリに commit & push
+  → src/post.mjs     : Threads に公開（テキスト、または raw.githubusercontent.com のURLで画像付き）
+  → トークンは手動更新（npm run refresh-token → 新トークンを Secret に貼替）
 ```
 
 ## あなたが編集するファイル

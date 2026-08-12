@@ -11,5 +11,6 @@ node_modules/
 
 # 生成物の作業ファイル（画像は outbox/images/ に置いて別途コミットします）
 outbox/post.json
+outbox/buzz-cache.json
 *.log
 .new_token

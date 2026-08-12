@@ -36,11 +36,24 @@ jobs:
       - name: Install deps
         run: npm ci || npm install
 
+      # バズ調査キャッシュ（1日1回だけ調査し、同日の別枠で使い回す）。
+      # CIは毎回まっさらな環境なので、JSTの日付をキーに actions/cache で持ち越す。
+      - name: JSTの日付を取得（キャッシュキー用）
+        id: jst
+        run: echo "date=$(TZ=Asia/Tokyo date +%F)" >> "$GITHUB_OUTPUT"
+
+      - name: バズ調査キャッシュを復元/保存
+        uses: actions/cache@v4
+        with:
+          path: outbox/buzz-cache.json
+          key: buzz-cache-${{ steps.jst.outputs.date }}
+
       - name: 本文＋（朝のみ）Pexels写真URLを生成
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }} # 文章生成(Claude)・必須
           ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}         # 任意(既定 claude-opus-4-8)
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}        # 画像取得・任意(無ければ画像なし)
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }} # バズ調査(Threads内検索)用
           FORCE_SLOT: ${{ github.event.inputs.slot }}          # 手動実行時のみ枠を固定（cronでは空＝時刻で自動選択）
         run: npm run generate
 

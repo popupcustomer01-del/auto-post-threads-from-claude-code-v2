@@ -27,28 +27,42 @@ function readCache() {
 }
 
 // --- 1) Threads公式キーワード検索（無料・生の人気投稿）---
+// ※クエリはスペースなしの単語のみ有効（「AI 副業」のような複合語は0件になる）。
+//   1語あたりの取得数が少ないため、5件集まるまで複数キーワードを合算する。
 async function searchThreadsPosts() {
   const TOKEN = process.env.THREADS_ACCESS_TOKEN;
   if (!TOKEN) return null;
-  const queries = ['AI 副業', '副業 初心者', 'ChatGPT 活用', '在宅ワーク'];
-  const q = queries[new Date().getUTCDate() % queries.length]; // 日替わりでキーワードを回す
-  const url =
-    `https://graph.threads.net/v1.0/keyword_search?q=${encodeURIComponent(q)}` +
-    `&search_type=TOP&fields=id,text,username&limit=15&access_token=${TOKEN}`;
-  const res = await (await fetch(url)).json();
-  if (res.error || !Array.isArray(res.data)) {
-    console.log(
-      `🔎 Threads内検索は使えず(${res.error?.message || '不明'}) → Web検索にフォールバック`,
-    );
-    return null;
+  const queries = ['AI副業', '副業', 'ChatGPT', '在宅ワーク'];
+  const start = new Date().getUTCDate() % queries.length; // 日替わりで開始キーワードを回す
+  const posts = [];
+  const usedQueries = [];
+  const seen = new Set();
+  for (let i = 0; i < queries.length && posts.length < 5; i++) {
+    const q = queries[(start + i) % queries.length];
+    const url =
+      `https://graph.threads.net/v1.0/keyword_search?q=${encodeURIComponent(q)}` +
+      `&search_type=TOP&fields=id,text,username&limit=15&access_token=${TOKEN}`;
+    const res = await (await fetch(url)).json();
+    if (res.error || !Array.isArray(res.data)) {
+      console.log(
+        `🔎 Threads内検索エラー(${q}: ${res.error?.message || '不明'}) → Web検索にフォールバック`,
+      );
+      return null;
+    }
+    usedQueries.push(q);
+    for (const p of res.data) {
+      const t = (p.text || '').trim();
+      if (t.length < 40) continue; // 短すぎる投稿は参考にならない
+      if (p.username === 'aiwith_aris') continue; // 自分の投稿は除外
+      if (seen.has(p.id)) continue;
+      seen.add(p.id);
+      posts.push({ u: p.username, t });
+      if (posts.length >= 5) break;
+    }
   }
-  const posts = res.data
-    .map((p) => ({ u: p.username, t: (p.text || '').trim() }))
-    .filter((p) => p.t.length >= 40) // 短すぎる投稿は参考にならないので除外
-    .slice(0, 5);
   if (!posts.length) return null;
   return (
-    `【Threads内で「${q}」の上位表示投稿（実物・本日取得）】\n` +
+    `【Threads内で「${usedQueries.join('」「')}」の上位表示投稿（実物・本日取得）】\n` +
     posts
       .map((p, i) => `--- 実例${i + 1}（@${p.u}）\n${p.t.slice(0, 300)}`)
       .join('\n')
@@ -98,6 +112,8 @@ async function webResearch(theme) {
       .map((b) => b.text)
       .join('\n')
       .trim();
+    if (!text)
+      console.log(`🔎 Web検索リサーチ: 応答が空(stop_reason=${res.stop_reason})`);
     return text || null;
   } catch (e) {
     console.log('🔎 Web検索リサーチ失敗: ' + e.message);

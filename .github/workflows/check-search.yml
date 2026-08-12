@@ -1,0 +1,17 @@
+name: Threads検索チェック（投稿しない）
+
+on:
+  workflow_dispatch: # 手動実行専用。keyword_search が本番Secretのトークンで動くかだけを確認する
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: keyword_search 動作確認
+        env:
+          THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
+        run: node src/checkSearch.mjs

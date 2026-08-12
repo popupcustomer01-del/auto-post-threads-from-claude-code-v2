@@ -1,8 +1,18 @@
 // Threads keyword_search の動作確認スクリプト（投稿はしない・CI/ローカル共用）
 // 使い方: node src/checkSearch.mjs  （THREADS_ACCESS_TOKEN を環境変数か .env から読む）
-import { loadEnv } from './config.mjs';
+// ※CIでは npm install なしで動かすため、依存ゼロ（config.mjs を読み込まない）
+import { readFileSync, existsSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-loadEnv();
+// .env があれば読む（環境変数が既にあればそちらを優先）
+const envPath = join(dirname(fileURLToPath(import.meta.url)), '..', '.env');
+if (!process.env.THREADS_ACCESS_TOKEN && existsSync(envPath)) {
+  for (const line of readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+    if (m && !(m[1] in process.env)) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+  }
+}
 const TOKEN = process.env.THREADS_ACCESS_TOKEN;
 const BASE = 'https://graph.threads.net/v1.0';
 if (!TOKEN) {

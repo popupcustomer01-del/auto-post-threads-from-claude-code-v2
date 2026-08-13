@@ -3,19 +3,19 @@
 // 出力: outbox/post.json（本文・imageUrl は画像なしなら null）
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { ROOT, loadEnv, loadPersona, requireEnv } from './config.mjs';
 import { getFreshNews } from './news.mjs';
 import { getStockPhoto } from './pexels.mjs';
 import { getBuzzExamples } from './buzz.mjs';
 
 loadEnv();
-// 文章=Claude（必須）。画像はローカルでカード生成のみ（外部API不要）。
-requireEnv(['ANTHROPIC_API_KEY']);
+// 文章=OpenAI（必須）。画像はローカルでカード生成のみ（外部API不要）。
+requireEnv(['OPENAI_API_KEY']);
 const persona = loadPersona();
 
-const anthropic = new Anthropic(); // ANTHROPIC_API_KEY を自動で読む
-const TEXT_MODEL = process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
+const openai = new OpenAI(); // OPENAI_API_KEY を自動で読む
+const TEXT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o';
 
 // --- ネタと型を決める（乱数を使わず、日付＋時刻で決定的に回す）---
 // 1日に複数回走っても、時刻(UTC hour)が違うので別のネタ・型になる。
@@ -134,20 +134,18 @@ const userPrompt = `ジャンル: ${persona.genre}
 上記に沿って「${style}」で投稿本文を1本書いてください。`;
 
 async function generateText(extraNote = '') {
-  // Claude（公式Anthropic SDK）で本文生成。Opus 4.8 は temperature 非対応なので渡さない。
-  const res = await anthropic.messages.create({
+  // OpenAI（公式SDK・Chat Completions）で本文生成。
+  const res = await openai.chat.completions.create({
     model: TEXT_MODEL,
     max_tokens: 1024,
-    system: systemPrompt,
-    messages: [{ role: 'user', content: userPrompt + extraNote }],
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt + extraNote },
+    ],
   });
-  const text = res.content
-    .filter((b) => b.type === 'text')
-    .map((b) => b.text)
-    .join('')
-    .trim();
+  const text = (res.choices?.[0]?.message?.content || '').trim();
   if (!text)
-    throw new Error('Claude本文生成に失敗: 空の応答 ' + JSON.stringify(res));
+    throw new Error('OpenAI本文生成に失敗: 空の応答 ' + JSON.stringify(res));
   return text;
 }
 
@@ -195,17 +193,15 @@ ${formatRules}
 
 上記ニュースについて 初心者がすぐ使える形で 3本のツリー投稿を書いてください`;
 
-  const res = await anthropic.messages.create({
+  const res = await openai.chat.completions.create({
     model: TEXT_MODEL,
     max_tokens: 1500,
-    system: sys,
-    messages: [{ role: 'user', content: usr }],
+    messages: [
+      { role: 'system', content: sys },
+      { role: 'user', content: usr },
+    ],
   });
-  const raw = res.content
-    .filter((b) => b.type === 'text')
-    .map((b) => b.text)
-    .join('')
-    .trim();
+  const raw = (res.choices?.[0]?.message?.content || '').trim();
   const parts = raw
     .split(/^\s*={3,}\s*$/m)
     .map((s) => sanitize(s))
@@ -251,17 +247,15 @@ ${formatRules}
 
 上記テーマで お手本の型に沿って ノウハウ長文ツリーを書いてください`;
 
-  const res = await anthropic.messages.create({
+  const res = await openai.chat.completions.create({
     model: TEXT_MODEL,
     max_tokens: 2000,
-    system: sys,
-    messages: [{ role: 'user', content: usr + extraNote }],
+    messages: [
+      { role: 'system', content: sys },
+      { role: 'user', content: usr + extraNote },
+    ],
   });
-  const raw = res.content
-    .filter((b) => b.type === 'text')
-    .map((b) => b.text)
-    .join('')
-    .trim();
+  const raw = (res.choices?.[0]?.message?.content || '').trim();
   const parts = raw
     .split(/^\s*={3,}\s*$/m)
     .map((s) => sanitize(s))

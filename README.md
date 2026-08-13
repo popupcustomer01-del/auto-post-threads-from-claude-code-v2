@@ -25,11 +25,10 @@ npm install
 
 ### 2. キーを用意
 - `THREADS_ACCESS_TOKEN` / `THREADS_USER_ID` … 取得済み（`.env` にあり）
-- `OPENAI_API_KEY` … **文章生成(OpenAI)用・必須**。https://platform.openai.com/api-keys で発行
+- `OPENAI_API_KEY` … **文章生成＋バズ調査のWeb検索(OpenAI)用・必須**。https://platform.openai.com/api-keys で発行
 - `PEXELS_API_KEY` … 画像用・任意。朝の枠の写真に使用（未設定でも画像なしで動作）。※現在は `persona.yml` の厳選写真URLをローテするため実質不要
-- （任意）`OPENAI_MODEL` … 既定は `gpt-4o`。別モデルを使いたいときに指定可
-- （任意）`ANTHROPIC_API_KEY` … バズ調査のWeb検索フォールバック(Claude)用。未設定でもThreads内検索が優先されるため生成は動作
-- （任意）`ANTHROPIC_MODEL` … バズ調査用。既定は `claude-opus-4-8`
+- （任意）`OPENAI_MODEL` … 本文生成モデル。既定は `gpt-4o`
+- （任意）`BUZZ_MODEL` … バズ調査のWeb検索モデル。既定は `gpt-4o`
 
 `.env.example` をコピーして `.env` を作り、値を入れます（`.env` はGitに上がりません）。
 
@@ -43,8 +42,8 @@ npm run post       # Threadsへ公開（画像はPexelsの公開URLをそのま�
 1. GitHubで**リポジトリを作成**（Actionsの無料枠が使える **public** 推奨）
 2. リポジトリの **Settings → Secrets and variables → Actions** に登録：
    - `THREADS_ACCESS_TOKEN`, `THREADS_USER_ID`
-   - `ANTHROPIC_API_KEY`（文章生成・必須）
-   - （任意）Variables に `ANTHROPIC_MODEL`
+   - `OPENAI_API_KEY`（文章生成＋バズ調査・必須）
+   - （任意）Variables に `OPENAI_MODEL` / `BUZZ_MODEL`
 3. このフォルダを push
 4. **Actions タブ → 「Threads 自動投稿」→ Run workflow** で手動テスト
 5. うまくいったら、`.github/workflows/auto-post.yml` の `cron` を好きな時刻に調整

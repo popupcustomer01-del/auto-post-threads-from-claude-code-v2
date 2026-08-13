@@ -2,15 +2,15 @@
 // 優先順位:
 //   0) 本日分のキャッシュ(outbox/buzz-cache.json)があればそれを使う（調査は1日1回だけ）
 //   1) Threads公式のキーワード検索API（無料・実際の人気投稿。要 threads_keyword_search 権限）
-//   2) ClaudeのWeb検索（有料のフォールバック。調査は安いSonnet 5で行う）
+//   2) OpenAIのWeb検索（有料のフォールバック。調査は安いモデルで行う）
 // すべて失敗したら null を返し、呼び出し側はリサーチなしで生成を続行する（生成は止めない）。
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { ROOT } from './config.mjs';
 
-// 調査は本文より知性が要らないので安いモデルで十分（本文生成は従来どおり ANTHROPIC_MODEL）
-const RESEARCH_MODEL = process.env.BUZZ_MODEL || 'claude-sonnet-5';
+// 調査は本文より知性が要らないので安いモデルで十分（本文生成は OPENAI_MODEL）
+const RESEARCH_MODEL = process.env.BUZZ_MODEL || 'gpt-4o';
 const CACHE_PATH = join(ROOT, 'outbox', 'buzz-cache.json');
 
 // JSTの日付文字列（キャッシュのキー。夕方18時と夜21時は同じ日付になる）
@@ -69,9 +69,9 @@ async function searchThreadsPosts() {
   );
 }
 
-// --- 2) Web検索フォールバック（Claudeのweb_searchサーバーツール・Sonnet 5）---
+// --- 2) Web検索フォールバック（OpenAIのweb_search組み込みツール・Responses API）---
 async function webResearch(theme) {
-  const anthropic = new Anthropic();
+  const openai = new OpenAI();
   const prompt = `あなたはSNSグロースのリサーチャーです。Web検索を使って、日本語のThreads（Meta社のSNS）で「今」伸びている投稿を調べてください。
 
 対象ジャンル: AI活用 × 副業（初心者向け）／在宅ワーク／ChatGPT活用術
@@ -88,32 +88,17 @@ async function webResearch(theme) {
 - 実例が見つからない項目は無理に埋めず「見つからず」と書く`;
 
   try {
-    let messages = [{ role: 'user', content: prompt }];
-    let res = await anthropic.messages.create({
+    // Responses APIの組み込みweb_searchツール。検索の実行はモデル側で完結する。
+    const res = await openai.responses.create({
       model: RESEARCH_MODEL,
-      max_tokens: 2500,
-      tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 5 }],
-      messages,
+      tools: [{ type: 'web_search_preview' }],
+      max_output_tokens: 2500,
+      input: prompt,
     });
 
-    // サーバーツールのループが一時停止した場合は続きを要求する（最大3回）
-    for (let i = 0; i < 3 && res.stop_reason === 'pause_turn'; i++) {
-      messages = [...messages, { role: 'assistant', content: res.content }];
-      res = await anthropic.messages.create({
-        model: RESEARCH_MODEL,
-        max_tokens: 2500,
-        tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 5 }],
-        messages,
-      });
-    }
-
-    const text = res.content
-      .filter((b) => b.type === 'text')
-      .map((b) => b.text)
-      .join('\n')
-      .trim();
+    const text = (res.output_text || '').trim();
     if (!text)
-      console.log(`🔎 Web検索リサーチ: 応答が空(stop_reason=${res.stop_reason})`);
+      console.log(`🔎 Web検索リサーチ: 応答が空(status=${res.status})`);
     return text || null;
   } catch (e) {
     console.log('🔎 Web検索リサーチ失敗: ' + e.message);

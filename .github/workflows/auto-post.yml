@@ -50,10 +50,9 @@ jobs:
 
       - name: 本文＋（朝のみ）Pexels写真URLを生成
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}        # 文章生成(OpenAI)・必須
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}        # 文章生成＋バズ調査Web検索(OpenAI)・必須
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}               # 任意(既定 gpt-4o)
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }} # バズ調査Web検索(Claude)フォールバック用・任意
-          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}         # 任意(既定 claude-opus-4-8)
+          BUZZ_MODEL: ${{ vars.BUZZ_MODEL }}                   # 任意(バズ調査用・既定 gpt-4o)
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}        # 画像取得・任意(無ければ画像なし)
           THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }} # バズ調査(Threads内検索)用
           FORCE_SLOT: ${{ github.event.inputs.slot }}          # 手動実行時のみ枠を固定（cronでは空＝時刻で自動選択）

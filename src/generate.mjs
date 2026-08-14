@@ -15,7 +15,7 @@ requireEnv(['OPENAI_API_KEY']);
 const persona = loadPersona();
 
 const openai = new OpenAI(); // OPENAI_API_KEY を自動で読む
-const TEXT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o';
+const TEXT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
 // --- ネタと型を決める（乱数を使わず、日付＋時刻で決定的に回す）---
 // 1日に複数回走っても、時刻(UTC hour)が違うので別のネタ・型になる。
@@ -30,11 +30,74 @@ function pick(arr, offset = 0) {
   return arr[(slot + offset) % arr.length];
 }
 
+// --- 乱数ユーティリティ（投稿の反復を防ぐ・毎回ゆらぎを出す）---------------
+// 旧実装は「日付＋時刻」の決定的選択で、ネタは8日周期で固定・型はスロット固定
+// だった。これが「毎回同じような投稿」の構造的原因。ここを乱択に変え、
+// ネタ / 型 / フック / 締め方 / 切り口 に毎回ランダム性を持たせる。
+// ※テストで結果を再現したいときだけ GEN_SEED=数値 を渡すと決定的になる。
+let _seed = process.env.GEN_SEED ? Number(process.env.GEN_SEED) >>> 0 || 1 : null;
+function rnd() {
+  if (_seed == null) return Math.random();
+  _seed ^= _seed << 13;
+  _seed ^= _seed >>> 17;
+  _seed ^= _seed << 5;
+  return ((_seed >>> 0) % 100000) / 100000;
+}
+function rand(arr, fallback = undefined) {
+  if (!Array.isArray(arr) || !arr.length) return fallback;
+  return arr[Math.floor(rnd() * arr.length)];
+}
+
+// --- フックの型メニュー（型リファレンス.mdのフック表より・毎回1つ乱択）------
+// 全部を並べて丸投げすると同じ型に収束するため、今回使う型を1つだけ指定する。
+const HOOK_MENU = [
+  '数字から始める（例「15分で」「月+5万まで」「3年間」など具体数字を1行目に置く）',
+  '「これ」で先に指してから中身を言う（例「これ 知らずにずっと損してた」）',
+  '「最近」「今日」「昔」など時間の言葉から入る実況風（例「昔のわたしは〜」）',
+  'セリフを「」で始める（例「いい感じにして しか言えなかった頃」）',
+  '属性を名指しする（例「プロンプトに毎回1時間かけてる人へ」）',
+  '常識をひっくり返す（例「◯◯だと思ってたけど 実は逆だった」）',
+];
+
+// --- 締め方メニュー（毎回「質問」で終わる問題を解消）-----------------------
+// save=保存うながし / action=具体アクション / assert=言い切り持論
+// soft=静かな余韻 / question=一言で返せる問い。question は夜枠中心に絞る。
+const CLOSING_MENU = {
+  save: '最後は「保存して見返してね」など保存を1行うながして締める 質問は付けない',
+  action: '最後は「今日はこれだけやってみて」と具体的なアクションを1つ置いて締める 質問は付けない',
+  assert:
+    '最後は失敗ベースの言い切り持論で締める（例「結局 続けた人だけが残る」）質問は付けない',
+  soft: '最後は静かな余韻か「…」で締める 説明しすぎない 質問はしない',
+  question:
+    '最後は「〜な人います？」か答えやすい二択で 一言で返信できる問いで締める',
+};
+const CLOSING_DEFAULT_POOL = {
+  save: ['save', 'action', 'assert', 'save'],
+  soft: ['soft', 'assert', 'action', 'soft'],
+  question: ['question', 'assert', 'question', 'action'],
+};
+
+// --- 切り口スパイス（毎回1つ乱択・具体性と多様性を強制する仕掛け）----------
+// 同じネタ・同じ型でも「切り口」を変えることで投稿の見え方が毎回変わる。
+const SPICE_MENU = [
+  'コピペで使えるプロンプトの全文を1つ入れる（ーーーで前後を囲んで見せる）',
+  'before→after を具体的な2つの数字で示す（例 40分→10分 週3時間→30分）',
+  '実在ツール名を最低2つ具体的に出す（ChatGPT Gemini Canva Notion など）',
+  'うまくいった話ではなく わたしがつまずいた具体場面から書き始める',
+  '手順を①②③の3ステップで だれでも今日できる粒度まで具体化する',
+  'ありがちな勘違いを1つ名指しして 正しいやり方に置き換えて見せる',
+  '数字は出さず 時間帯・場所・気持ちなど具体的な場面描写で読ませる',
+  'NGなプロンプト例とOKなプロンプト例を並べて 違いを1つ見せる',
+];
+
 const topics = (persona.topics_pool || []).filter(
   (t) => t && !String(t).includes('<'),
 );
 const styles = persona.use_styles || ['③質問・問いかけ型'];
-const topic = topics.length ? pick(topics) : persona.genre;
+// ★毎回ランダムに選ぶ（旧: pick() は8日周期で同じネタに戻っていた）
+const topic = topics.length ? rand(topics) : persona.genre;
+// この投稿の「切り口」を1つ乱択（具体性と多様性を強制）
+const spice = rand(SPICE_MENU);
 
 // --- 投稿枠(スロット)を決める：実行時刻(UTC)に最も近い枠を選ぶ ---
 // 朝=価値提供 / 夕=共感ストーリー / 夜=問いかけ、と役割を固定してローテを避ける。
@@ -63,21 +126,24 @@ function currentSlot() {
   return best;
 }
 const slot = currentSlot();
-const style = slot?.style || pick(styles, 1);
+// ★型もスロット内の候補から毎回乱択（旧: slot.style 固定で毎日同じ型だった）
+const style =
+  rand(slot?.styles) || slot?.style || rand(styles) || '①数字・実績型';
 
-// 締め方は枠ごとに変える（毎回"質問締め"を避ける。質問は夜の枠だけに集中させる）
-// 返信はアルゴリズム最重要シグナルのため、保存枠でも最後に「一言で答えられる質問」を添える
-const closingRules = {
-  save: '締めは「保存して見返してね」など保存を促す一言 そのあとに「どれから試す？」のような一言で答えられる軽い質問を1行だけ足す',
-  soft: '締めは静かな余韻かやわらかいフォロー誘導 長い質問はしない',
-  question:
-    '締めは「〜な人います？」または二択の質問で終え 一言で返信できる形にする',
-};
-const closing = closingRules[slot?.closing] || closingRules.question;
+// 締め方は毎回プールから乱択する（旧仕様は保存枠にも質問を足していて
+// 「毎回 問いかけで終わる」主因だった）。質問は夜枠のプールに集中させる。
+const closingPool =
+  (Array.isArray(slot?.closings) && slot.closings.length && slot.closings) ||
+  CLOSING_DEFAULT_POOL[slot?.closing] ||
+  ['action', 'assert', 'question'];
+const closingKey = rand(closingPool);
+const closing = CLOSING_MENU[closingKey] || CLOSING_MENU.action;
+// この投稿のフックの型を1つ乱択
+const chosenHook = rand(HOOK_MENU);
 
 if (slot) {
   console.log(
-    `🕒 投稿枠: ${slot.jst} [${slot.role}] 型=${style} 締め=${slot.closing}`,
+    `🕒 投稿枠: ${slot.jst} [${slot.role}] 型=${style} 締め=${closingKey} フック=${chosenHook.slice(0, 14)}… 切り口=${spice.slice(0, 16)}…`,
   );
 }
 
@@ -95,17 +161,30 @@ const personaGuard = `【キャラの一貫性（最重要・厳守）】
 - 同じ実体験でも毎回同じ言い回し・同じ数字の組み合わせを繰り返さない（類似投稿の反復はスパム判定リスク） 実体験に触れない投稿があってもよい`;
 
 const hookRules = `【1行目（フック）ルール】
-- 次のいずれかで始める: (a)数字 (b)「◯◯と思ってる人 多いけど実は違う」型の常識くつがえし (c)「◯◯な人へ」の属性名指し (d)「これ」or セリフ
-- 1行目に結論や答えを書かない 「方法は3つあって」「違いは1つで」のように文を切って続きを読ませる
-- 【】で囲む宣言タイトルは使わない`;
+- 今回のフックはこの型で始める → ${chosenHook}
+- 1行目に結論や答えを全部書かない 文を切って続きを読ませる
+- 【】で囲む宣言タイトルは使わない（宣伝臭が出て伸びない）`;
 
 const formatRules = `【表記ルール（Threads特有・厳守）】
 - 句読点「。」「、」は使わない 半角スペースか改行で間を取る
-- 1行は20字前後まで 1〜2行ごとに空行を入れて縦にスラスラ読める形にする
+- 1行は30字前後まで 意味のかたまりで改行し 2〜3行ごとに空行を入れる
 - 体言止め・言い切り・話し言葉（〜ですよね 〜かな 〜なんです）を混ぜて機械っぽい均質さを消す
 - 絵文字は①②③など構造化の目的だけに使う 最大3個 装飾目的では使わない
-- 数字を必ず1つ入れる
 - ハッシュタグ・リンクURLは入れない`;
+
+// ★中身の濃さ・具体性を強制するブロック（薄い/抽象的な投稿の再発防止）
+const substanceRules = `【中身の濃さ・具体性（最重要・厳守）】
+- 「便利」「効率化」「いい感じ」だけで終わる抽象文は禁止 必ず具体に落とす
+- 次のうち最低2つを必ず入れる:
+  (a)具体的な数字 (b)実在ツール名や機能名（ChatGPT Gemini Canva Notion 等）
+  (c)今日そのまま試せる手順 (d)コピペできる一文やプロンプト (e)具体的な失敗場面
+- 読み終えた瞬間に読者が「1つ行動できる」情報を必ず1つ残す
+- 一般論やどこかで聞いた話は書かない ${FIRST}が実際に試した粒度で書く
+- 前回までと同じ言い回し・数字・型の使い回しはしない 毎回ちがう切り口にする
+- 全体は400〜500字目安 説明しすぎず 少し余白（ツッコミどころ）を残す`;
+
+// ★今回の投稿だけの「切り口」指定（毎回変わる・多様性の主エンジン）
+const spiceNote = `【今回の切り口（必ず反映）】${spice}`;
 
 // --- 本文生成（単発投稿用システムプロンプト）---
 const systemPrompt = `あなたはThreads運用のプロライターです。以下のルールを厳守して投稿本文を1本だけ書きます。
@@ -115,8 +194,12 @@ ${personaGuard}
 ${hookRules}
 
 ${formatRules}
+
+${substanceRules}
 - ${closing}
-- 全体で最大12行（空行を含む）
+- 全体で最大16行（空行を含む）
+
+${spiceNote}
 
 【この投稿の役割】${slot?.role || '汎用'}${slot?.guide ? '（' + slot.guide + '）' : ''}
 【使う型】${style}
@@ -138,6 +221,11 @@ async function generateText(extraNote = '') {
   const res = await openai.chat.completions.create({
     model: TEXT_MODEL,
     max_tokens: 1024,
+    // ★文面のゆらぎを増やし 反復を減らす（temperature高め＋反復ペナルティ）
+    temperature: 0.95,
+    top_p: 0.95,
+    frequency_penalty: 0.4,
+    presence_penalty: 0.3,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt + extraNote },
@@ -170,6 +258,8 @@ ${personaGuard}
 ${hookRules}
 
 ${formatRules}
+
+${substanceRules}
 - 各本は最大14行（空行を含む）
 - 煽りワード禁止（${(persona.ng?.words || []).join(' / ')}）
 - タイトルや要約に無い事実は断定しない 推測で補うときは「〜みたい」「〜かも」と正直に書く
@@ -180,8 +270,10 @@ ${formatRules}
 
 【3本の役割】
 1本目（フック＋何が起きたか）: 1行目はフックルールに従う 続けてニュースの内容を2〜3行でわかりやすく伝え これが初心者にどう関係あるかを1行 詳しい中身は「詳しく説明すると」で切って2本目へつなぐ
-2本目（ここが主役・詳しい解説）: 何がどう変わったのかを①②③の番号付きでかみ砕いて解説する 各項目は「見出し1行＋説明1〜2行」 途中に「つまり◯◯ということ」の要約を入れる
-3本目（今日やること＋問いかけ）: 初心者が今日スマホやPCで試せる具体的な一歩を手順で示す ${FIRST}の率直な感想を1行そえる 最後は読者が一言で答えられる問いかけで締める（「〜な人います？」等）
+2本目（ここが主役・詳しい解説）: 何がどう変わったのかを①②③の番号付きでかみ砕いて解説する 各項目は「見出し1行＋説明1〜2行」 具体的な操作やツール名まで踏み込む 途中に「つまり◯◯ということ」の要約を入れる
+3本目（今日やること）: 初心者が今日スマホやPCで試せる具体的な一歩を手順で示す ${FIRST}の率直な感想を1行そえる ${closing}
+
+${spiceNote}
 
 【出力形式】3本を「===」だけの行で区切って出力する 本文のみ 前置き説明は書かない`;
 
@@ -196,6 +288,10 @@ ${formatRules}
   const res = await openai.chat.completions.create({
     model: TEXT_MODEL,
     max_tokens: 1500,
+    temperature: 0.9,
+    top_p: 0.95,
+    frequency_penalty: 0.4,
+    presence_penalty: 0.3,
     messages: [
       { role: 'system', content: sys },
       { role: 'user', content: usr },
@@ -224,19 +320,23 @@ ${personaGuard}
 ${hookRules}
 
 ${formatRules}
+
+${substanceRules}
 - 煽りワード禁止（${(persona.ng?.words || []).join(' / ')}）
 
 【読者レベル（最重要・厳守）】
 - 読者はAI副業の初心者 専門用語や難しい話は避ける 中学生でもわかる言葉で
-- 抽象論で終わらせず 今日すぐ試せる具体アクションに落とす
+- 抽象論で終わらせず 今日すぐ試せる具体アクションに落とす 実在ツール名や具体手順まで踏み込む
 
 【ツリーの型（2〜3本・1本目が主役）】
 - 1本目（ここに価値の8割を入れる）: 1行目はフックルールに従う → すぐに①②③…の番号付き具体ノウハウを続ける 項目は3個か5個 各項目「見出し1行＋補足1行」 1本目だけ読んでも役に立つ状態にする
-- 2本目: いちばん大事な1項目の深掘り or 補足 ${FIRST}の失敗談を1つ混ぜて人間味を出す
-- 最終の本: 要点を一言でまとめ 「フォローして一緒に頑張ろう」等のやわらかい誘導 最後は読者が一言で答えられる問いかけを1つ添える
+- 2本目: いちばん大事な1項目の深掘り or 補足 ${FIRST}の失敗談を1つ混ぜて人間味を出す 可能ならコピペできる実物（プロンプト等）を1つ見せる
+- 最終の本: 要点を一言でまとめ 「フォローして一緒に頑張ろう」等のやわらかい誘導 ${closing}
 
 【本数の決め方】
 - 基本は2本 深掘りに値する内容があるときだけ3本 無理に引き伸ばさない
+
+${spiceNote}
 
 【出力形式】各本を「===」だけの行で区切って出力する 本文のみ 前置き説明は書かない`;
 
@@ -250,6 +350,10 @@ ${formatRules}
   const res = await openai.chat.completions.create({
     model: TEXT_MODEL,
     max_tokens: 2000,
+    temperature: 0.9,
+    top_p: 0.95,
+    frequency_penalty: 0.4,
+    presence_penalty: 0.3,
     messages: [
       { role: 'system', content: sys },
       { role: 'user', content: usr + extraNote },

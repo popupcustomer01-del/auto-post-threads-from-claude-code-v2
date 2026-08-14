@@ -27,8 +27,8 @@ npm install
 - `THREADS_ACCESS_TOKEN` / `THREADS_USER_ID` … 取得済み（`.env` にあり）
 - `OPENAI_API_KEY` … **文章生成＋バズ調査のWeb検索(OpenAI)用・必須**。https://platform.openai.com/api-keys で発行
 - `PEXELS_API_KEY` … 画像用・任意。朝の枠の写真に使用（未設定でも画像なしで動作）。※現在は `persona.yml` の厳選写真URLをローテするため実質不要
-- （任意）`OPENAI_MODEL` … 本文生成モデル。既定は `gpt-4o`
-- （任意）`BUZZ_MODEL` … バズ調査のWeb検索モデル。既定は `gpt-4o`
+- （任意）`OPENAI_MODEL` … 本文生成モデル。既定は `gpt-4o-mini`（安価）
+- （任意）`BUZZ_MODEL` … バズ調査のWeb検索モデル。既定は `gpt-4o-mini`
 
 `.env.example` をコピーして `.env` を作り、値を入れます（`.env` はGitに上がりません）。
 

@@ -9,8 +9,8 @@ import { join } from 'node:path';
 import OpenAI from 'openai';
 import { ROOT } from './config.mjs';
 
-// 調査は本文より知性が要らないので安いモデルで十分（本文生成は OPENAI_MODEL）
-const RESEARCH_MODEL = process.env.BUZZ_MODEL || 'gpt-4o-mini';
+// バズ調査用モデル（本文生成は OPENAI_MODEL）。BUZZ_MODEL で安いモデルに下げられる
+const RESEARCH_MODEL = process.env.BUZZ_MODEL || 'gpt-4.1';
 const CACHE_PATH = join(ROOT, 'outbox', 'buzz-cache.json');
 
 // JSTの日付文字列（キャッシュのキー。夕方18時と夜21時は同じ日付になる）

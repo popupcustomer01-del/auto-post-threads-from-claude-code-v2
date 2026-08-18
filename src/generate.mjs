@@ -1,4 +1,4 @@
-// 本文生成（Claude）＋ 朝の枠だけ Pexels のストック写真を1枚添付。
+// 本文生成（OpenAI）＋ 朝の枠だけ Pexels のストック写真を1枚添付。
 // 調査結論に基づき「テキスト中心・画像は時々・AI顔合成/文字焼き込みはしない」方針。
 // 出力: outbox/post.json（本文・imageUrl は画像なしなら null）
 import { writeFileSync } from 'node:fs';
@@ -8,14 +8,61 @@ import { ROOT, loadEnv, loadPersona, requireEnv } from './config.mjs';
 import { getFreshNews } from './news.mjs';
 import { getStockPhoto } from './pexels.mjs';
 import { getBuzzExamples } from './buzz.mjs';
+import {
+  readHistory,
+  writeHistory,
+  refreshRecentMetrics,
+  buildRecentPostsText,
+  buildLearningsText,
+} from './history.mjs';
+import { validatePost, buildFeedback } from './validate.mjs';
 
 loadEnv();
 // 文章=OpenAI（必須）。画像はローカルでカード生成のみ（外部API不要）。
 requireEnv(['OPENAI_API_KEY']);
 const persona = loadPersona();
 
+// --- 投稿履歴（学習・重複防止）を読み込む（失敗しても生成は続行）---
+// threads-auto-post から移植: 反応データ(insights)で「何が良かったか」を学習し、
+// 直近投稿の本文を「同じネタ・言い回しの禁止リスト」としてプロンプトに渡す。
+let learningsText = '';
+let recentPostsText = '';
+try {
+  let history = readHistory();
+  if (process.env.THREADS_ACCESS_TOKEN) {
+    history = await refreshRecentMetrics(history, process.env.THREADS_ACCESS_TOKEN);
+    writeHistory(history);
+  }
+  learningsText = buildLearningsText(history);
+  recentPostsText = buildRecentPostsText(history);
+  console.log(
+    `📚 投稿履歴${history.length}件 学習データ=${learningsText ? 'あり' : 'まだ不足'} 重複禁止リスト=${recentPostsText ? 'あり' : 'なし'}`,
+  );
+} catch (e) {
+  console.log('📚 履歴の読み込みに失敗（生成は続行）: ' + e.message);
+}
+
 const openai = new OpenAI(); // OPENAI_API_KEY を自動で読む
-const TEXT_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const TEXT_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1';
+// OpenAIプロジェクトのModel limitsで既定モデルが未許可の場合に自動で切り替える先
+// (gpt-4.1を使いたい場合は platform.openai.com のプロジェクト設定 → Limits で許可する)
+const FALLBACK_MODEL = 'gpt-4o';
+let activeModel = TEXT_MODEL;
+
+async function createChat(params) {
+  try {
+    return await openai.chat.completions.create({ model: activeModel, ...params });
+  } catch (e) {
+    if (e?.code === 'model_not_found' && activeModel !== FALLBACK_MODEL) {
+      console.log(
+        `⚠️ ${activeModel} はこのOpenAIプロジェクトで未許可 → ${FALLBACK_MODEL} で続行します`,
+      );
+      activeModel = FALLBACK_MODEL;
+      return await openai.chat.completions.create({ model: activeModel, ...params });
+    }
+    throw e;
+  }
+}
 
 // --- ネタと型を決める（乱数を使わず、日付＋時刻で決定的に回す）---
 // 1日に複数回走っても、時刻(UTC hour)が違うので別のネタ・型になる。
@@ -281,12 +328,11 @@ const userPrompt = `ジャンル: ${persona.genre}
 使わない言葉: ${(persona.ng?.words || []).join(', ')}
 
 この投稿の役割: ${slot?.role || '汎用'} / 狙い: ${slot?.goal || ''}
-上記に沿って「${style}」で投稿本文を1本書いてください。`;
+上記に沿って「${style}」で投稿本文を1本書いてください。${recentPostsText}${learningsText}`;
 
 async function generateText(extraNote = '') {
   // OpenAI（公式SDK・Chat Completions）で本文生成。
-  const res = await openai.chat.completions.create({
-    model: TEXT_MODEL,
+  const res = await createChat({
     max_tokens: 1024,
     // ★文面のゆらぎを増やし 反復を減らす（temperature高め＋反復ペナルティ）
     temperature: 0.95,
@@ -313,10 +359,53 @@ function sanitize(text) {
     .trim();
 }
 
+// --- 機械検品つき生成（threads-auto-post から移植 2026-08-18 統合）---
+// プロンプト指示だけではルール(行数・締め方・NGワード等)が守られないことがあるため
+// validate.mjs でコード検品し 違反があれば指摘を付けて再生成させる
+const MAX_GEN_ATTEMPTS = 3;
+// 空行を除いた本文行数の上限 short=3行はタイムライン実測(伸びる投稿は3行程度)による
+// medium/longはLENGTH_MENUの「空行を含む最大行数」から空行分を引いた値に揃える
+const CONTENT_LINE_LIMITS = { short: 3, medium: 7, long: 11 };
+
+async function generateSingleValidated(extraNote) {
+  const maxContentLines = CONTENT_LINE_LIMITS[lengthKey] ?? 10;
+  let text = '';
+  let feedback = '';
+  for (let attempt = 1; attempt <= MAX_GEN_ATTEMPTS; attempt++) {
+    text = sanitize(await generateText(extraNote + feedback));
+    const problems = validatePost(text, { maxContentLines, closingKey });
+    if (!problems.length) return text;
+    console.log(`🔍 検品NG(${attempt}回目): ${problems.join(' / ')}`);
+    feedback = buildFeedback(problems);
+  }
+  console.log('🔍 検品違反が残ったまま規定回数に達したため 最後の生成を採用します');
+  return text;
+}
+
+async function withThreadValidation(genFn, label) {
+  let parts = [];
+  let feedback = '';
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    parts = await genFn(feedback);
+    const problems = parts.flatMap((p, i) =>
+      validatePost(p, {
+        maxContentLines: 12,
+        closingKey,
+        isLastPart: i === parts.length - 1,
+      }).map((m) => `${i + 1}本目: ${m}`),
+    );
+    if (!problems.length) return parts;
+    console.log(`🔍 ${label}検品NG(${attempt}回目): ${problems.join(' / ')}`);
+    feedback = buildFeedback(problems);
+  }
+  console.log('🔍 検品違反が残ったまま規定回数に達したため 最後の生成を採用します');
+  return parts;
+}
+
 // --- ニュース解説ツリー（朝の枠用）---
 // ★「見出し＋一言」の速報型は最弱（2026-08調査）。ここでは読者が元記事を読まなくても
 //   中身がわかる「詳しい初心者向け解説」に変換する: 何が起きた→かみ砕き解説→今日やること。
-async function generateThread(article) {
+async function generateThread(article, extraNote = '') {
   const sys = `あなたはThreads運用のプロライターです。最新AIニュースを「3本のツリー投稿」で初心者向けに詳しく解説します。
 目標は「ニュースサイトを読まなくても このツリーだけで中身がわかって 今日やることまで決まる」状態です。
 
@@ -350,10 +439,9 @@ ${spiceNote}
 発信者: ${persona.persona?.role || ''}
 ターゲット: ${JSON.stringify(persona.target || {})}
 
-上記ニュースについて 初心者がすぐ使える形で 3本のツリー投稿を書いてください`;
+上記ニュースについて 初心者がすぐ使える形で 3本のツリー投稿を書いてください${recentPostsText}${extraNote}`;
 
-  const res = await openai.chat.completions.create({
-    model: TEXT_MODEL,
+  const res = await createChat({
     max_tokens: 1500,
     temperature: 0.9,
     top_p: 0.95,
@@ -412,10 +500,9 @@ ${spiceNote}
 ターゲット: ${JSON.stringify(persona.target || {})}
 避ける話題: ${(persona.ng?.topics || []).join(', ')}
 
-上記テーマで お手本の型に沿って ノウハウ長文ツリーを書いてください`;
+上記テーマで お手本の型に沿って ノウハウ長文ツリーを書いてください${recentPostsText}`;
 
-  const res = await openai.chat.completions.create({
-    model: TEXT_MODEL,
+  const res = await createChat({
     max_tokens: 2000,
     temperature: 0.9,
     top_p: 0.95,
@@ -481,7 +568,10 @@ let outbox;
 if (article) {
   // ===== ニュース速報ツリー =====
   console.log(`🧵 ニュース枠：3本ツリーを生成します → ${article.title}`);
-  const parts = await generateThread(article);
+  const parts = await withThreadValidation(
+    (fb) => generateThread(article, fb),
+    'ニュースツリー',
+  );
   console.log(
     '📝 ツリー生成:\n' +
       parts.map((p, i) => `【${i + 1}】\n${p}`).join('\n\n') +
@@ -505,7 +595,10 @@ if (article) {
 } else if (slot?.thread === true) {
   // ===== ノウハウ長文ツリー（ニュース不要・トピック起点）=====
   console.log(`🧵 ノウハウ枠：長文ツリーを生成します → ${topic}`);
-  const parts = await generateValueThread(topic, buzzNote);
+  const parts = await withThreadValidation(
+    (fb) => generateValueThread(topic, buzzNote + fb),
+    'ノウハウツリー',
+  );
   console.log(
     `📝 ツリー生成（全${parts.length}本）:\n` +
       parts.map((p, i) => `【${i + 1}】\n${p}`).join('\n\n') +
@@ -525,7 +618,7 @@ if (article) {
   };
 } else {
   // ===== 従来の単発投稿（エバーグリーン）=====
-  const text = sanitize(await generateText(buzzNote));
+  const text = await generateSingleValidated(buzzNote);
   console.log('📝 本文生成:\n' + text + '\n');
   let imageUrl = null;
   if (slot?.image === true) imageUrl = await pickPhotoUrl();

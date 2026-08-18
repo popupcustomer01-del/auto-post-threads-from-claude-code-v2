@@ -2,11 +2,13 @@ name: Threads 自動投稿
 
 on:
   schedule:
-    # UTCで指定。日本時間(JST)= UTC+9。1日3投稿（朝の通勤前＋夜のゴールデンタイム）。
-    # リサーチ結論: 朝7-9時(他SNSの約2.3倍) / 夜18-21時が最も反応が良い。昼12-13時は競合が激しく回避。
-    - cron: "0 22 * * *" # 07:00 JST（朝の通勤・始業前）
-    - cron: "0 9 * * *"  # 18:00 JST（夜のゴールデンタイム開始）
-    - cron: "0 12 * * *" # 21:00 JST（夜のピーク）
+    # UTCで指定。日本時間(JST)= UTC+9。1日3投稿。
+    # リサーチ結論(2026-08 フラーApp Ape実測): 日本のThreads利用は平日7時/12時/19-22時に山があり最大ピークは21時台。
+    # ピークの少し前に投稿して初速を稼ぐ。また毎時0分はGitHub Actionsの混雑で15-30分の遅延・スキップが
+    # 起きやすい(公式ドキュメント明記)ため 半端な分を指定する。
+    - cron: "7 22 * * *"  # 07:07 JST（朝の通勤・始業前ピーク）
+    - cron: "17 10 * * *" # 19:17 JST（夜ピーク序盤）
+    - cron: "37 11 * * *" # 20:37 JST（最大ピーク21時台の直前・最重要枠）
   workflow_dispatch: # 手動実行ボタン（テスト用）
     inputs:
       slot:
@@ -22,6 +24,10 @@ on:
 concurrency:
   group: threads-auto-post
   cancel-in-progress: false
+
+# 投稿履歴(data/post-history.json)をコミットして書き戻すため書き込み権限が必要
+permissions:
+  contents: write
 
 jobs:
   post:
@@ -51,8 +57,8 @@ jobs:
       - name: 本文＋（朝のみ）Pexels写真URLを生成
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}        # 文章生成＋バズ調査Web検索(OpenAI)・必須
-          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}               # 任意(既定 gpt-4o)
-          BUZZ_MODEL: ${{ vars.BUZZ_MODEL }}                   # 任意(バズ調査用・既定 gpt-4o)
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}               # 任意(既定 gpt-4.1)
+          BUZZ_MODEL: ${{ vars.BUZZ_MODEL }}                   # 任意(バズ調査用・既定 gpt-4.1)
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}        # 画像取得・任意(無ければ画像なし)
           THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }} # バズ調査(Threads内検索)用
           FORCE_SLOT: ${{ github.event.inputs.slot }}          # 手動実行時のみ枠を固定（cronでは空＝時刻で自動選択）
@@ -64,6 +70,22 @@ jobs:
           THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
           THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
         run: npm run post
+
+      # 投稿履歴(学習・重複防止データ)をリポジトリに書き戻す
+      # 投稿が成功して履歴だけ残らない事態を避けるため 投稿ステップが失敗しても実行する
+      - name: 投稿履歴をコミット
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/post-history.json
+          if git diff --cached --quiet; then
+            echo "履歴に変更なし"
+          else
+            git commit -m "chore: 投稿履歴を更新"
+            git pull --rebase origin main
+            git push
+          fi
 
   # ※ トークンは「手動更新」運用（60日失効前に自分で更新）。
   #    手順は やることリスト.md を参照。自動更新にしたくなったら refresh ジョブを足せます。

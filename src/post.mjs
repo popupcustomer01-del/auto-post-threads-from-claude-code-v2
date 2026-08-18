@@ -4,6 +4,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { join } from "node:path";
 import { ROOT, loadEnv, requireEnv } from "./config.mjs";
+import { appendHistory } from "./history.mjs";
 
 loadEnv();
 requireEnv(["THREADS_ACCESS_TOKEN"]);
@@ -93,16 +94,48 @@ async function publishOne({ text, image }, replyToId) {
     );
   }
 
-  // Step 2: 公開。画像は取り込みに時間がかかるため長めに待つ（公式推奨: 画像は最低30秒）
-  const waitMs = image ? 30000 : 3000;
-  console.log(`⏳ ${waitMs / 1000}秒待ってから公開します`);
-  await sleep(waitMs);
+  // Step 2: コンテナの status を確認してから公開する。
+  // 作成直後に threads_publish すると Meta 側の処理が未完了で
+  // "Media Not Found"(code 24 / 4279009) になることがある。盲目リトライだと
+  // 本当の理由が分からないので status を実際に見る（画像は取り込みに時間がかかる）。
+  //   FINISHED → 公開 / ERROR・EXPIRED → 理由(error_message)を出して中止
+  //   状態を確認できない/IN_PROGRESS のまま → 従来どおり公開を試す（フォールバック）
+  const firstWaitMs = image ? 30000 : 5000; // 公式推奨: 画像は最低30秒
+  const retryWaitMs = image ? 15000 : 8000;
+  const MAX_STATUS_CHECKS = 5;
+  let status = "";
+  let statusErr = "";
+  for (let attempt = 1; attempt <= MAX_STATUS_CHECKS; attempt++) {
+    await sleep(attempt === 1 ? firstWaitMs : retryWaitMs);
+    const sres = await fetch(
+      `${BASE}/${c.id}?fields=status,error_message&access_token=${TOKEN}`
+    );
+    const sj = await sres.json();
+    status = sj.status || "";
+    statusErr = sj.error_message || sj.error?.message || "";
+    console.log(`⏳ コンテナ状態(${attempt}回目): ${status || JSON.stringify(sj)}`);
+    if (status === "FINISHED") break;
+    if (status === "ERROR" || status === "EXPIRED") {
+      throw new Error(
+        `コンテナが公開不可の状態です status=${status} 理由=${statusErr || "不明"} (creation_id=${c.id})`
+      );
+    }
+  }
+  if (status !== "FINISHED") {
+    console.log(`⚠️ FINISHEDを確認できず（最終=${status || "取得できず"}）このまま公開を試みます`);
+  }
+
   const r2 = await fetch(`${BASE}/${userId}/threads_publish`, {
     method: "POST",
     body: new URLSearchParams({ creation_id: c.id, access_token: TOKEN }),
   });
   const p = await r2.json();
-  if (!p.id) throw new Error("公開に失敗: " + JSON.stringify(p));
+  if (!p.id)
+    throw new Error(
+      "公開に失敗: " +
+        JSON.stringify(p) +
+        (statusErr ? ` / コンテナ側の理由=${statusErr}` : "")
+    );
   return p.id;
 }
 
@@ -125,4 +158,18 @@ if (isThread) {
   console.log(`\n🎉 ツリー投稿できました！ 先頭 post_id: ${publishedIds[0]}（全${publishedIds.length}本）`);
 } else {
   console.log(`\n🎉 投稿できました！ post_id: ${publishedIds[0]}`);
+}
+
+// --- 投稿履歴に追記（学習・重複防止用 data/post-history.json）---
+// ツリーは先頭投稿を代表として記録する（insightsも先頭投稿で取る）。失敗しても投稿自体は完了扱い。
+try {
+  appendHistory({
+    postId: publishedIds[0],
+    text: segments[0].text,
+    slot: post.slot || null,
+    kind: post.kind || (isThread ? "thread" : "single"),
+  });
+  console.log("📚 投稿履歴を保存しました（data/post-history.json）");
+} catch (e) {
+  console.error("📚 履歴の保存に失敗（投稿自体は完了）: " + e.message);
 }

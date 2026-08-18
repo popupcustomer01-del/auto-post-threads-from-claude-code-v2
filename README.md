@@ -1,13 +1,13 @@
 # auto-threads — Threads 完全自動投稿
 
-本文を **Claude が生成**し、基本はテキストのみ（朝の枠だけ Pexels の厳選写真を1枚添付）、
+本文を **OpenAI (GPT-4.1) が生成**し、基本はテキストのみ（朝の枠だけ Pexels の厳選写真を1枚添付）、
 **GitHub Actions が毎日決まった時刻に自動で公開**します。画像はローカル生成せず、Pexelsの公開URLをそのまま使います。
 
 ## 仕組み
 
 ```
 GitHub Actions（cron）
-  → src/generate.mjs : persona.yml を読み、Claude で本文を生成（朝枠のみ Pexels厳選写真URLを1枚選ぶ）→ outbox/
+  → src/generate.mjs : persona.yml を読み、OpenAI で本文を生成（朝枠のみ Pexels厳選写真URLを1枚選ぶ）→ outbox/
   → src/post.mjs     : Threads に公開（テキスト、または Pexels の公開URLで画像付き）
   → トークンは手動更新（npm run refresh-token → 新トークンを Secret に貼替）
 ```

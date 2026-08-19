@@ -78,3 +78,28 @@ npm run post                     # ← 実際に公開される。テスト時�
 `.github/workflows/auto-post.yml` は `npm run generate`（= OpenAI 版）を呼んでいる。
 ルーティンに完全移行するなら、この workflow の `schedule:` を止めて二重投稿を防ぐこと。
 併用したい場合は「Actions=平日 / ルーティン=土日」のように担当枠を分ける。
+
+## 作成済みのクラウドルーティン（2026-08-20）
+
+| 枠 | cron (UTC) | JST | ルーティン |
+|---|---|---|---|
+| 朝 | `7 22 * * *` | 07:07 | https://claude.ai/code/routines/trig_019QXHzSdREFJ8A1u7e2b67s |
+| 夕 | `17 10 * * *` | 19:17 | https://claude.ai/code/routines/trig_019ZGcW7dmAXmoQcH5dwZuqA |
+| 夜 | `37 11 * * *` | 20:37 | https://claude.ai/code/routines/trig_013yeT6Y4jW3T8ACMg3w7hha |
+
+- モデル: `claude-opus-5`（本文の質がアカウントの価値そのものなので上位モデルにしている）
+- 作業ブランチ: `from-claude-code`（プロンプト内で `git checkout` している）
+- **現在すべて無効（enabled: false）**
+
+### 有効化する前に必要な2つ
+
+1. **クラウド環境に `THREADS_ACCESS_TOKEN` を登録する**
+   ルーティンはローカルの `.env` を読めない。https://claude.ai/code の環境設定で登録する。
+   未登録のまま動かすと `npm run post` が「必要な環境変数が未設定です」で止まる（投稿はされない）。
+
+2. **`main` の GitHub Actions cron を止める**
+   `main` の `.github/workflows/auto-post.yml` は今も1日3回 OpenAI 版で投稿している。
+   ルーティンを有効にすると**1日6投稿**になる。GitHub の Actions タブ → 「Threads 自動投稿」→
+   `···` → Disable workflow で止めるのが、`main` のコードを触らずに済む方法。
+
+この2つが済んだら、ルーティンを有効化する（3つとも）。

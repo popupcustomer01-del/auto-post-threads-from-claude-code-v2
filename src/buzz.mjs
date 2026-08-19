@@ -4,8 +4,8 @@
 //   1) Threads公式のキーワード検索API（無料・実際の人気投稿。要 threads_keyword_search 権限）
 //   2) OpenAIのWeb検索（有料のフォールバック。調査は安いモデルで行う）
 // すべて失敗したら null を返し、呼び出し側はリサーチなしで生成を続行する（生成は止めない）。
-import { readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 import OpenAI from 'openai';
 import { ROOT } from './config.mjs';
 
@@ -130,8 +130,12 @@ export async function getBuzzExamples(theme) {
   }
 
   try {
+    // CIのチェックアウトに outbox/ が無いことがあるため必ず作る（無いとキャッシュが永遠に効かない）
+    mkdirSync(dirname(CACHE_PATH), { recursive: true });
     writeFileSync(CACHE_PATH, JSON.stringify({ date: jstDate(), source, text }, null, 2));
-  } catch {}
+  } catch (e) {
+    console.log('🔎 バズ調査キャッシュの保存に失敗（続行）: ' + e.message);
+  }
   console.log(`🔎 バズ実例（取得元: ${source}）:\n${text}\n`);
   return text;
 }

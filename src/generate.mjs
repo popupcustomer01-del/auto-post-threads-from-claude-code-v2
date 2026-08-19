@@ -1,7 +1,7 @@
 // 本文生成（OpenAI）＋ 朝の枠だけ Pexels のストック写真を1枚添付。
 // 調査結論に基づき「テキスト中心・画像は時々・AI顔合成/文字焼き込みはしない」方針。
 // 出力: outbox/post.json（本文・imageUrl は画像なしなら null）
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import OpenAI from 'openai';
 import { ROOT, loadEnv, loadPersona, requireEnv } from './config.mjs';
@@ -679,6 +679,8 @@ if (article) {
   };
 }
 
+// outbox/ 配下は全部gitignoreされているためCIのチェックアウトには存在しない → 毎回作る
+mkdirSync(join(ROOT, 'outbox'), { recursive: true });
 writeFileSync(
   join(ROOT, 'outbox', 'post.json'),
   JSON.stringify(outbox, null, 2),

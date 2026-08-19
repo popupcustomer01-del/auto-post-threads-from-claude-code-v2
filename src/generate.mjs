@@ -16,10 +16,15 @@ import {
   buildLearningsText,
 } from './history.mjs';
 import { validatePost, buildFeedback } from './validate.mjs';
+import { writeBrief } from './brief-writer.mjs';
 
 loadEnv();
 // 文章=OpenAI（必須）。画像はローカルでカード生成のみ（外部API不要）。
-requireEnv(['OPENAI_API_KEY']);
+// --- BRIEF モード（OPENAI_API_KEY 不要）---
+// --brief / BRIEF_ONLY=1 のとき 本文は書かず「指示書」だけを outbox/brief.md に出して終わる。
+// 本文は Claude（ルーティン）がその指示書を読んで書く。生成以外（枠決め・ニュース・検品・投稿）は共通。
+const BRIEF = process.env.BRIEF_ONLY === '1' || process.argv.includes('--brief');
+if (!BRIEF) requireEnv(['OPENAI_API_KEY']);
 const persona = loadPersona();
 
 // --- 投稿履歴（学習・重複防止）を読み込む（失敗しても生成は続行）---
@@ -42,7 +47,9 @@ try {
   console.log('📚 履歴の読み込みに失敗（生成は続行）: ' + e.message);
 }
 
-const openai = new OpenAI(); // OPENAI_API_KEY を自動で読む
+// クライアントは実際に呼ぶ直前に作る（BRIEFモードはキーが無いため即時生成すると落ちる）
+let _openai = null;
+const openai = () => (_openai ||= new OpenAI()); // OPENAI_API_KEY を自動で読む
 const TEXT_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1';
 // OpenAIプロジェクトのModel limitsで既定モデルが未許可の場合に自動で切り替える先
 // (gpt-4.1を使いたい場合は platform.openai.com のプロジェクト設定 → Limits で許可する)
@@ -51,14 +58,14 @@ let activeModel = TEXT_MODEL;
 
 async function createChat(params) {
   try {
-    return await openai.chat.completions.create({ model: activeModel, ...params });
+    return await openai().chat.completions.create({ model: activeModel, ...params });
   } catch (e) {
     if (e?.code === 'model_not_found' && activeModel !== FALLBACK_MODEL) {
       console.log(
         `⚠️ ${activeModel} はこのOpenAIプロジェクトで未許可 → ${FALLBACK_MODEL} で続行します`,
       );
       activeModel = FALLBACK_MODEL;
-      return await openai.chat.completions.create({ model: activeModel, ...params });
+      return await openai().chat.completions.create({ model: activeModel, ...params });
     }
     throw e;
   }
@@ -99,6 +106,9 @@ function rand(arr, fallback = undefined) {
 // 全部を並べて丸投げすると同じ型に収束するため、今回使う型を1つだけ指定する。
 // シグネチャー口癖: あえて毎回同じ口癖を使いキャラの記憶フックにする（persona.ymlで変更可）
 const SIGNATURE = persona.persona?.signature_phrase || '100回言ってるけど';
+// 「得られる変化」の統一メッセージ。LP誘導締め(lp)で毎回反復して刷り込む
+// （bio・固定ポスト・LPも同じ文言に揃える。persona.yml の persona.promise で変更可）
+const PROMISE = persona.persona?.promise || '';
 const HOOK_MENU = [
   '数字から始める（例「15分で」「月+5万まで」「3年間」など具体数字を1行目に置く）',
   '「これ」で先に指してから中身を言う（例「これ 知らずにずっと損してた」）',
@@ -127,6 +137,11 @@ const CLOSING_MENU = {
   soft: '最後は静かな余韻か「…」で締める 説明しすぎない 質問はしない',
   question:
     '最後は「〜な人います？」か答えやすい二択で 一言で返信できる問いで締める',
+  // ↓ 2026-08-20 LP送客調査（_private/threads-research-lp-cv.md §6-2）より追加
+  //   LP誘導のお知らせ締め。persona.yml の closings に "lp" を入れた枠だけで発生する
+  //   （現在は夕方ツリー枠の5枠中1つ＝週1〜2回の低頻度。@mio_ebook式の一行CTA）。
+  //   検品(validate.mjs)は closing=lp の最終本に限り 最終行のプロフ案内を出し惜しみ扱いしない
+  lp: `最後は本文の学びをひと言でまとめてから 空行をはさんで${PROMISE ? ` 「${PROMISE}」の気持ちにつなげ` : ''} 「くわしくはプロフィールのリンクにまとめてます」のような一行のお知らせで締める 友だちに教えるトーンで書く 売り込み言葉（今すぐ/限定/締切/チャンス）は使わない フォロー誘導は書かない 質問は付けない`,
 };
 const CLOSING_DEFAULT_POOL = {
   save: ['save', 'action', 'assert', 'save'],
@@ -223,9 +238,32 @@ function currentSlot() {
   return best;
 }
 const slot = currentSlot();
+
+// 締め方は毎回プールから乱択する（旧仕様は保存枠にも質問を足していて
+// 「毎回 問いかけで終わる」主因だった）。質問は夜枠のプールに集中させる。
+// ※型より先に決める: LP誘導日(lp)は型を誘導向きの3型に絞るため（下記）
+// テスト/手動実行用: FORCE_CLOSING=lp などで締め方を固定できる
+const closingPool =
+  (Array.isArray(slot?.closings) && slot.closings.length && slot.closings) ||
+  CLOSING_DEFAULT_POOL[slot?.closing] ||
+  ['action', 'assert', 'question'];
+const closingKey = CLOSING_MENU[process.env.FORCE_CLOSING]
+  ? process.env.FORCE_CLOSING
+  : rand(closingPool);
+const closing = CLOSING_MENU[closingKey] || CLOSING_MENU.action;
+
 // ★型もスロット内の候補から毎回乱択（旧: slot.style 固定で毎日同じ型だった）
+// LP誘導日(closing=lp)だけは「本文で7割の価値を渡し 残りをLPへ」が成立する
+// 誘導投稿の3型に絞る（_private/threads-research-lp-cv.md §5-3）
+const LP_DAY_STYLES = ['⑦長文ストーリー型', '⑥ノウハウ・保存版型', '①数字・実績型'];
 const style =
-  rand(slot?.styles) || slot?.style || rand(styles) || '①数字・実績型';
+  (closingKey === 'lp' &&
+    (rand((slot?.styles || []).filter((s) => LP_DAY_STYLES.includes(s))) ||
+      rand(LP_DAY_STYLES))) ||
+  rand(slot?.styles) ||
+  slot?.style ||
+  rand(styles) ||
+  '①数字・実績型';
 
 // --- 単発投稿の長さを枠のプールから乱択（thread/newsツリーは対象外＝従来どおり長い）---
 // short=40〜120字 / medium=150〜250字 / long=400〜500字。夜は短文中心 朝の単発日は短〜中。
@@ -241,14 +279,6 @@ const lengthSpec = LENGTH_MENU[lengthKey] || LENGTH_MENU.long;
 const singleSpice = lengthKey === 'short' ? rand(SHORT_SPICE_MENU) : spice;
 const singleSpiceNote = `【今回の切り口（必ず反映）】${singleSpice}`;
 
-// 締め方は毎回プールから乱択する（旧仕様は保存枠にも質問を足していて
-// 「毎回 問いかけで終わる」主因だった）。質問は夜枠のプールに集中させる。
-const closingPool =
-  (Array.isArray(slot?.closings) && slot.closings.length && slot.closings) ||
-  CLOSING_DEFAULT_POOL[slot?.closing] ||
-  ['action', 'assert', 'question'];
-const closingKey = rand(closingPool);
-const closing = CLOSING_MENU[closingKey] || CLOSING_MENU.action;
 // この投稿のフックの型を1つ乱択
 const chosenHook = rand(HOOK_MENU);
 
@@ -317,6 +347,17 @@ const singleSubstanceRules = buildSubstanceRules(lengthSpec);
 // ★今回の投稿だけの「切り口」指定（毎回変わる・多様性の主エンジン）
 const spiceNote = `【今回の切り口（必ず反映）】${spice}`;
 
+// ★LP誘導日(closing=lp)だけの追加ルール（週1〜2回の低頻度・お知らせトーン）
+// 出し惜しみ・売り込み臭を出すと逆効果（詳細 _private/threads-research-lp-cv.md §5-3）
+const lpRules =
+  closingKey === 'lp'
+    ? `
+
+【きょうはLP誘導日（低頻度）の特別ルール】
+- 本文はそれだけで役に立つ状態にする（価値の7割を本文で渡す）「答えはリンク先で」の引っ張りは禁止
+- 締めのお知らせは友だちに教えるトーンで一行だけ 宣伝臭を出さない`
+    : '';
+
 // --- 本文生成（単発投稿用システムプロンプト）---
 const systemPrompt = `あなたはThreads運用のプロライターです。以下のルールを厳守して投稿本文を1本だけ書きます。
 
@@ -328,7 +369,7 @@ ${formatRules}
 
 ${singleSubstanceRules}
 - ${closing}
-- 本文は空行を除いて最大${lengthSpec.contentLines}行 空行は行数に数えない
+- 本文は空行を除いて最大${lengthSpec.contentLines}行 空行は行数に数えない${lpRules}
 
 ${singleSpiceNote}
 
@@ -463,7 +504,7 @@ async function withThreadValidation(genFn, label) {
 // --- ニュース解説ツリー（朝の枠用）---
 // ★「見出し＋一言」の速報型は最弱（2026-08調査）。ここでは読者が元記事を読まなくても
 //   中身がわかる「詳しい初心者向け解説」に変換する: 何が起きた→かみ砕き解説→今日やること。
-async function generateThread(article, extraNote = '') {
+function buildNewsThreadPrompt(article, extraNote = '') {
   const sys = `あなたはThreads運用のプロライターです。最新AIニュースを「3本のツリー投稿」で初心者向けに詳しく解説します。
 目標は「ニュースサイトを読まなくても このツリーだけで中身がわかって 今日やることまで決まる」状態です。
 
@@ -499,6 +540,11 @@ ${spiceNote}
 
 上記ニュースについて 初心者がすぐ使える形で 3本のツリー投稿を書いてください${recentPostsText}${extraNote}`;
 
+  return { sys, usr };
+}
+
+async function generateThread(article, extraNote = '') {
+  const { sys, usr } = buildNewsThreadPrompt(article, extraNote);
   const res = await createChat({
     max_tokens: 1500,
     temperature: 0.9,
@@ -534,7 +580,7 @@ const THREAD_FORMAT_MENU = [
     rule: `【ツリーの型（2〜3本・1本目が主役）】
 - 1本目（ここに価値の8割を入れる）: 1行目はフックルールに従う → すぐに①②③…の番号付き具体ノウハウを続ける 項目は3個か5個 各項目「見出し1行＋補足1行」 1本目だけ読んでも役に立つ状態にする
 - 2本目: いちばん大事な1項目の深掘り or 補足 __FIRST__の失敗談と そのときの感情を1つ混ぜて人間味を出す
-- 最終の本: 要点を一言でまとめ 「フォローして一緒に頑張ろう」等のやわらかい誘導 __CLOSING__
+- 最終の本: 要点を一言でまとめ __FOLLOW____CLOSING__
 
 【本数の決め方】
 - 基本は2本 深掘りに値する内容があるときだけ3本 無理に引き伸ばさない`,
@@ -557,10 +603,17 @@ const threadFormat =
 
 // --- ノウハウツリーを生成（ニュース不要・トピック起点）---
 // 構成は THREAD_FORMAT_MENU から乱択（front=1本目主役 / cliffhanger=途中切りで引っ張る）
-async function generateValueThread(topic, extraNote = '') {
+function buildValueThreadPrompt(topic) {
   const formatRule = threadFormat.rule
     .replaceAll('__FIRST__', FIRST)
-    .replaceAll('__CLOSING__', closing);
+    .replaceAll('__CLOSING__', closing)
+    // LP誘導日はフォロー誘導を外す（フォロー+リンクの二重CTAは宣伝臭が出るため）
+    .replaceAll(
+      '__FOLLOW__',
+      closingKey === 'lp'
+        ? ''
+        : '「フォローして一緒に頑張ろう」等のやわらかい誘導 ',
+    );
   const sys = `あなたはThreads運用のプロライターです。1つのテーマを「2〜3本のツリー投稿」に分けて書きます。
 
 ${personaGuard}
@@ -577,7 +630,7 @@ ${substanceRules}
 - 読者はAI副業の初心者 専門用語や難しい話は避ける 中学生でもわかる言葉で
 - 抽象論で終わらせず 今日すぐ試せる具体アクションに落とす 実在ツール名や具体手順まで踏み込む
 
-${formatRule}
+${formatRule}${lpRules}
 
 ${spiceNote}
 
@@ -590,6 +643,11 @@ ${spiceNote}
 
 上記テーマで お手本の型に沿って ノウハウ長文ツリーを書いてください${recentPostsText}`;
 
+  return { sys, usr };
+}
+
+async function generateValueThread(topic, extraNote = '') {
+  const { sys, usr } = buildValueThreadPrompt(topic);
   const res = await createChat({
     max_tokens: 2000,
     temperature: 0.9,
@@ -640,7 +698,7 @@ if (slot?.news === true) {
 // --- バズ実例リサーチ（buzz: true の枠のみ・失敗しても生成は続行）---
 // 実際に伸びている投稿のフック・構成をWeb検索で拾い、参考資料としてプロンプトに渡す。
 let buzzNote = '';
-if (!article && slot?.buzz === true) {
+if (!BRIEF && !article && slot?.buzz === true) {
   const buzz = await getBuzzExamples(topic);
   if (buzz) {
     buzzNote = `
@@ -650,6 +708,48 @@ ${buzz}
 
 ※参考資料の使い方（厳守）: 実例の文章・実績・数字をコピーしない 他人の体験を自分の体験として書かない 真似てよいのはフックの型 構成 リズムだけ 話題のキーワードはテーマに合うときだけ取り入れる`;
   }
+}
+
+// --- BRIEF モード: 本文は書かず「指示書」だけ出して終わる（OpenAI不使用）---
+// ここまでで枠・型・締め・長さ・ネタ・ニュースは決定済み。本文は Claude が brief.md を読んで書く。
+if (BRIEF) {
+  const imageUrl = slot?.image === true ? await pickPhotoUrl() : null;
+  let kind = 'single';
+  let prompt = { sys: systemPrompt, usr: userPrompt };
+  let maxContentLines = lengthSpec.contentLines ?? 10;
+  if (article) {
+    kind = 'news';
+    prompt = buildNewsThreadPrompt(article);
+    maxContentLines = THREAD_CONTENT_LINES;
+  } else if (slot?.thread === true) {
+    kind = 'value';
+    prompt = buildValueThreadPrompt(topic);
+    maxContentLines = THREAD_CONTENT_LINES;
+  }
+  const brief = writeBrief({
+    kind,
+    prompt,
+    maxContentLines,
+    slot,
+    style,
+    topic,
+    closingKey,
+    lengthKey,
+    imageUrl,
+    threadFormat: threadFormat.key,
+    article,
+  });
+  console.log(
+    '📝 指示書を作りました → outbox/brief.md（形式=' +
+      brief.form +
+      ' 種類=' +
+      brief.kind +
+      ' 行数上限=' +
+      brief.maxContentLines +
+      '）'
+  );
+  console.log('👉 次: brief.md を読んで本文を書き outbox/post.json に保存 → npm run check → npm run post');
+  process.exit(0);
 }
 
 let outbox;

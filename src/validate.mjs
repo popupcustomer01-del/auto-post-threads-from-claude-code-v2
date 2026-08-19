@@ -3,8 +3,8 @@
 // 呼び出し側(generate.mjs)が指摘付きで再生成する
 //
 // maxContentLines: 空行を除いた本文行数の上限
-//   短文(short)=3行 ※実際のタイムライン観察で「伸びる投稿は3行程度」が確認されている
-//   中文(medium)=6行 / 長文(long)・ツリー各本=10〜12行
+//   値は generate.mjs 側の LENGTH_MENU.contentLines / THREAD_CONTENT_LINES から渡される
+//   （プロンプトの行数指定と検品が同じ値を共有し 基準ズレで検品NGが直らない事態を防ぐ）
 // closingKey: 枠の締め方(question のときだけ問いで終わることを要求 それ以外は問い禁止)
 // isLastPart: ツリーの最終本かどうか(締めルールは最終本にだけ適用)
 export function validatePost(

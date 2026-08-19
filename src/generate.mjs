@@ -140,26 +140,29 @@ const SPICE_MENU = [
 // --- 長さモード（単発投稿の長短を毎回振り分ける）----------------------------
 // 「朝昼晩ぜんぶ長文になる」への対応。ツリー(news/thread)は保存狙いなので長いまま。
 // 単発投稿だけ short/medium/long を枠のプールから乱択して長短を混ぜる。
+//   contentLines: 空行を除いた本文行数の上限。プロンプトと検品(validate.mjs)の両方が
+//                 この同じ値を参照する（基準がズレると検品NGが再生成でも直らないため）。
+//                 short=3行はタイムライン実測(伸びる投稿は3行程度)による
 //   substance: その長さでの「中身の濃さ」ルール（短いほど詰め込まない）
 const LENGTH_MENU = {
   short: {
     label: 'ショート',
     chars: '40〜120字',
-    lines: 6,
+    contentLines: 3,
     substance:
       '短文なので詰め込まない 言いたいことは1つだけ 具体(ツール名/数字/手順)は入れても1つまで 共感や問いかけ 短い持論で一撃で刺す 一言で返せる余白を残す',
   },
   medium: {
     label: 'ミドル',
     chars: '150〜250字',
-    lines: 10,
+    contentLines: 7,
     substance:
       '次のうち最低1つは具体を入れる (a)数字 (b)実在ツール名 (c)今日試せる一手 要点だけに絞り 説明しすぎない',
   },
   long: {
     label: 'ロング',
     chars: '400〜500字',
-    lines: 16,
+    contentLines: 11,
     substance:
       '次のうち最低2つを必ず入れる (a)具体的な数字 (b)わたしが実際にAIを使った具体場面(ツール名を出してもよい) (c)つまずいた失敗と感情 (d)賛否が分かれる持論 (e)在宅・副業初心者のあるある 読み終えた瞬間に「わかる」か「やってみよう」が1つ残る プロンプトやテンプレの全文配布はしない',
   },
@@ -256,6 +259,7 @@ const personaGuard = `【キャラの一貫性（最重要・厳守）】
 - 上記以外の実績（画像制作代行 動画納品 別ジャンルの副業など）を「やっている」と語らない やっていないことは「調べた」「見かけた」「気になってる」と正直な立場で書く
 - 実績を語るときは「以前のダメな状態→期間→今の数字→変えたことは1つ」の順で語る
 - 数字は月3〜5万円や時給・分単位の時短など読者が自分事にできる規模だけ 月30万や月100万など遠い数字は出さない
+- 自分の実績の「期間・金額」は毎回同じ事実に固定する: 月+5万の達成までは「約半年」 それ以外の期間(「3ヶ月で達成」など)を新しく作らない 過去の投稿と経歴の数字が矛盾すると信頼を失う
 - 同じ実体験でも毎回同じ言い回し・同じ数字の組み合わせを繰り返さない（類似投稿の反復はスパム判定リスク） 実体験に触れない投稿があってもよい`;
 
 const hookRules = `【1行目（フック）ルール】
@@ -311,14 +315,14 @@ ${formatRules}
 
 ${singleSubstanceRules}
 - ${closing}
-- 全体で最大${lengthSpec.lines}行（空行を含む）
+- 本文は空行を除いて最大${lengthSpec.contentLines}行 空行は行数に数えない
 
 ${singleSpiceNote}
 
 【この投稿の役割】${slot?.role || '汎用'}${slot?.guide ? '（' + slot.guide + '）' : ''}
 【使う型】${style}
 
-【出力】本文テキストのみ。前置き・説明・引用符・ハッシュタグは付けない。`;
+【出力（最重要）】本文テキストのみ。空行を除いた行数が${lengthSpec.contentLines}行を1行でも超えたら不採用。書き終えたら行数を数え 超えていたら削ってから出力する。前置き・説明・引用符・ハッシュタグは付けない。`;
 
 const userPrompt = `ジャンル: ${persona.genre}
 今日のテーマ: ${topic}
@@ -330,12 +334,13 @@ const userPrompt = `ジャンル: ${persona.genre}
 この投稿の役割: ${slot?.role || '汎用'} / 狙い: ${slot?.goal || ''}
 上記に沿って「${style}」で投稿本文を1本書いてください。${recentPostsText}${learningsText}`;
 
-async function generateText(extraNote = '') {
+async function generateText(extraNote = '', opts = {}) {
   // OpenAI（公式SDK・Chat Completions）で本文生成。
   const res = await createChat({
     max_tokens: 1024,
     // ★文面のゆらぎを増やし 反復を減らす（temperature高め＋反復ペナルティ）
-    temperature: 0.95,
+    // 検品NG後の再生成では opts.temperature で下げ 指示遵守を優先する
+    temperature: opts.temperature ?? 0.95,
     top_p: 0.95,
     frequency_penalty: 0.4,
     presence_penalty: 0.3,
@@ -363,18 +368,58 @@ function sanitize(text) {
 // プロンプト指示だけではルール(行数・締め方・NGワード等)が守られないことがあるため
 // validate.mjs でコード検品し 違反があれば指摘を付けて再生成させる
 const MAX_GEN_ATTEMPTS = 3;
-// 空行を除いた本文行数の上限 short=3行はタイムライン実測(伸びる投稿は3行程度)による
-// medium/longはLENGTH_MENUの「空行を含む最大行数」から空行分を引いた値に揃える
-const CONTENT_LINE_LIMITS = { short: 3, medium: 7, long: 11 };
+// ツリー各本の行数上限（空行除き）。プロンプトと検品の両方で使う
+const THREAD_CONTENT_LINES = 12;
+
+// 行数オーバーの本文を「圧縮」で直す。ゼロから書き直させると同じ長さで再発するが、
+// 出来た本文を渡して縮めさせるのは確実に守られる（2026-08-19 実測: 再生成3回でも
+// ショート3行が一度も守られなかったため導入）。
+async function compressText(text, maxContentLines) {
+  const res = await createChat({
+    max_tokens: 1024,
+    temperature: 0.4,
+    messages: [
+      {
+        role: 'system',
+        content: `あなたはThreads投稿の圧縮担当です。渡された本文を 話題・口調・一人称（${FIRST}）・最後の行の締め方（問いなら問いのまま 言い切りなら言い切りのまま）を保ったまま 空行を除いて最大${maxContentLines}行に圧縮します。
+- いちばん刺さる1点だけ残し 説明・列挙・経緯は思い切って捨てる
+- 句読点「。」「、」は使わない 1行30字前後 ハッシュタグ・URLは入れない
+- 出力は本文のみ 前置きや説明は書かない`,
+      },
+      { role: 'user', content: text },
+    ],
+  });
+  return (res.choices?.[0]?.message?.content || '').trim();
+}
 
 async function generateSingleValidated(extraNote) {
-  const maxContentLines = CONTENT_LINE_LIMITS[lengthKey] ?? 10;
+  // 行数上限はプロンプトに書いた LENGTH_MENU.contentLines と同じ値で検品する
+  const maxContentLines = lengthSpec.contentLines ?? 10;
   let text = '';
   let feedback = '';
   for (let attempt = 1; attempt <= MAX_GEN_ATTEMPTS; attempt++) {
-    text = sanitize(await generateText(extraNote + feedback));
-    const problems = validatePost(text, { maxContentLines, closingKey });
+    // 2回目以降は温度を下げてルール遵守（特に行数）を優先する
+    text = sanitize(
+      await generateText(
+        extraNote + feedback,
+        attempt > 1 ? { temperature: 0.7 } : {},
+      ),
+    );
+    let problems = validatePost(text, { maxContentLines, closingKey });
     if (!problems.length) return text;
+
+    // 行数違反は再生成より圧縮のほうが確実 → 圧縮してもう一度検品する
+    if (problems.some((p) => p.includes('行数'))) {
+      const compressed = sanitize(await compressText(text, maxContentLines));
+      const after = validatePost(compressed, { maxContentLines, closingKey });
+      if (!after.length) {
+        console.log(`🔍 行数オーバーを圧縮で修正しました(${attempt}回目)`);
+        return compressed;
+      }
+      // 圧縮後も別の違反が残る場合のみ再生成に回す（違反内容は圧縮後のもの）
+      text = compressed;
+      problems = after;
+    }
     console.log(`🔍 検品NG(${attempt}回目): ${problems.join(' / ')}`);
     feedback = buildFeedback(problems);
   }
@@ -389,7 +434,7 @@ async function withThreadValidation(genFn, label) {
     parts = await genFn(feedback);
     const problems = parts.flatMap((p, i) =>
       validatePost(p, {
-        maxContentLines: 12,
+        maxContentLines: THREAD_CONTENT_LINES,
         closingKey,
         isLastPart: i === parts.length - 1,
       }).map((m) => `${i + 1}本目: ${m}`),
@@ -416,7 +461,7 @@ ${hookRules}
 ${formatRules}
 
 ${substanceRules}
-- 各本は最大14行（空行を含む）
+- 各本は空行を除いて最大${THREAD_CONTENT_LINES}行 空行は行数に数えない
 - 煽りワード禁止（${(persona.ng?.words || []).join(' / ')}）
 - タイトルや要約に無い事実は断定しない 推測で補うときは「〜みたい」「〜かも」と正直に書く
 
@@ -431,7 +476,7 @@ ${substanceRules}
 
 ${spiceNote}
 
-【出力形式】3本を「===」だけの行で区切って出力する 本文のみ 前置き説明は書かない`;
+【出力形式】3本を「===」だけの行で区切って出力する 本文のみ 前置き説明は書かない 各本は空行を除いて最大${THREAD_CONTENT_LINES}行（超えたら不採用）`;
 
   const usr = `ニュース見出し: ${article.title}
 出典: ${article.source}
@@ -477,6 +522,7 @@ ${hookRules}
 ${formatRules}
 
 ${substanceRules}
+- 各本は空行を除いて最大${THREAD_CONTENT_LINES}行 空行は行数に数えない
 - 煽りワード禁止（${(persona.ng?.words || []).join(' / ')}）
 
 【読者レベル（最重要・厳守）】
@@ -493,7 +539,7 @@ ${substanceRules}
 
 ${spiceNote}
 
-【出力形式】各本を「===」だけの行で区切って出力する 本文のみ 前置き説明は書かない`;
+【出力形式】各本を「===」だけの行で区切って出力する 本文のみ 前置き説明は書かない 各本は空行を除いて最大${THREAD_CONTENT_LINES}行（超えたら不採用）`;
 
   const usr = `テーマ: ${topic}
 発信者の立場: ${persona.persona?.role || ''} / 得意: ${persona.persona?.strength || ''} / 実体験: ${persona.persona?.episode || ''}

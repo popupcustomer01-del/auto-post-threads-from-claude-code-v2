@@ -35,6 +35,7 @@ export function writeBrief({
   kind,
   prompt,
   maxContentLines,
+  monologue = false,
   slot,
   style,
   topic,
@@ -56,6 +57,7 @@ export function writeBrief({
     style,
     topic,
     closingKey,
+    monologue, // ← check.mjs がこの値で独り言モードの検品をする
     lengthKey: isThread ? null : lengthKey,
     maxContentLines, // ← check.mjs がこの値で行数を検品する
     imageUrl: imageUrl || null,
@@ -107,6 +109,7 @@ WebSearch で「今 Threads で伸びている ${topic} 系の投稿」を調べ
 | 形式 | ${isThread ? 'ツリー投稿（2〜3本）' : '単発投稿'}${kind === 'news' ? '（ニュース解説3本）' : ''} |
 | 型 | ${style} |
 | 締め方 | ${closingKey} |
+| 語り口 | ${monologue ? '独り言モード（教えない・指示しない・売り込まない）' : '通常'} |
 | 長さ | ${isThread ? 'ツリー各本' : lengthKey} / 空行を除き **最大${maxContentLines}行** |
 | ツリー構成 | ${brief.threadFormat || '—'} |
 | 画像 | ${imageUrl ? imageUrl : 'なし（テキストのみ）'} |

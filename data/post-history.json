@@ -8,7 +8,7 @@
     "likes": 0,
     "views": 9,
     "replies": 2,
-    "metricsUpdatedAt": "2026-08-19T17:23:13.972Z"
+    "metricsUpdatedAt": "2026-08-20T10:46:08.466Z"
   },
   {
     "postId": "18154180597506457",
@@ -19,7 +19,7 @@
     "likes": 0,
     "views": 14,
     "replies": 0,
-    "metricsUpdatedAt": "2026-08-19T17:23:14.140Z"
+    "metricsUpdatedAt": "2026-08-20T10:46:08.665Z"
   },
   {
     "postId": "17905033665541344",
@@ -27,10 +27,10 @@
     "slot": "morning",
     "kind": "news",
     "postedAt": "2026-08-19T16:20:59.096Z",
-    "likes": 0,
-    "views": 44,
+    "likes": 1,
+    "views": 58,
     "replies": 2,
-    "metricsUpdatedAt": "2026-08-19T17:23:14.288Z"
+    "metricsUpdatedAt": "2026-08-20T10:46:08.883Z"
   },
   {
     "postId": "18113239822955543",
@@ -46,9 +46,9 @@
     "kind": "single",
     "postedAt": "2026-08-19T16:28:35.743Z",
     "likes": 0,
-    "views": 192,
+    "views": 195,
     "replies": 0,
-    "metricsUpdatedAt": "2026-08-19T22:36:53.930Z"
+    "metricsUpdatedAt": "2026-08-20T10:46:09.241Z"
   },
   {
     "postId": "18114186046969344",
@@ -56,16 +56,27 @@
     "slot": "morning",
     "kind": "news",
     "postedAt": "2026-08-19T17:24:12.285Z",
-    "likes": 0,
-    "views": 47,
+    "likes": 1,
+    "views": 51,
     "replies": 2,
-    "metricsUpdatedAt": "2026-08-19T22:36:54.091Z"
+    "metricsUpdatedAt": "2026-08-20T10:46:09.454Z"
   },
   {
     "postId": "18012372965944390",
     "text": "「宿題の丸投げがバレる時代だなんて 本気で思ってなかった」\nOpenAIが10代向けのChatGPT for Teensを出してきたみたい\n宿題“全部やっといて”がAIには通用しなくなる 感情面のケアも強化\n一見 大人の副業には関係ない話に見えるけど 実は逆\nわたしたちがAIを使うとき どこまで頼るか・どうバランス取るか\n今後ぜったい直面するポイントです\n\n詳しく説明すると",
     "slot": "morning",
     "kind": "news",
-    "postedAt": "2026-08-19T22:37:55.636Z"
+    "postedAt": "2026-08-19T22:37:55.636Z",
+    "likes": 1,
+    "views": 54,
+    "replies": 2,
+    "metricsUpdatedAt": "2026-08-20T10:46:09.684Z"
+  },
+  {
+    "postId": "18124821913697889",
+    "text": "副業を始めたばかりの人へ\n\n「最初の1か月で0円」って\n実はわたしも通った道\n\nここから変わったのは2つだけ",
+    "slot": "evening",
+    "kind": "value",
+    "postedAt": "2026-08-20T10:46:58.408Z"
   }
 ]

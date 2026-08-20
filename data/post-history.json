@@ -8,7 +8,7 @@
     "likes": 0,
     "views": 9,
     "replies": 2,
-    "metricsUpdatedAt": "2026-08-19T18:26:05.270Z"
+    "metricsUpdatedAt": "2026-08-20T10:46:08.466Z"
   },
   {
     "postId": "18154180597506457",
@@ -19,7 +19,7 @@
     "likes": 0,
     "views": 14,
     "replies": 0,
-    "metricsUpdatedAt": "2026-08-19T18:26:05.822Z"
+    "metricsUpdatedAt": "2026-08-20T10:46:08.665Z"
   },
   {
     "postId": "17905033665541344",
@@ -27,10 +27,10 @@
     "slot": "morning",
     "kind": "news",
     "postedAt": "2026-08-19T16:20:59.096Z",
-    "likes": 0,
-    "views": 48,
+    "likes": 1,
+    "views": 58,
     "replies": 2,
-    "metricsUpdatedAt": "2026-08-19T18:26:06.182Z"
+    "metricsUpdatedAt": "2026-08-20T10:46:08.883Z"
   },
   {
     "postId": "18113239822955543",
@@ -46,9 +46,20 @@
     "kind": "single",
     "postedAt": "2026-08-19T16:28:35.743Z",
     "likes": 0,
-    "views": 188,
+    "views": 195,
     "replies": 0,
-    "metricsUpdatedAt": "2026-08-19T18:26:07.557Z"
+    "metricsUpdatedAt": "2026-08-20T10:46:09.241Z"
+  },
+  {
+    "postId": "18114186046969344",
+    "text": "AI副業を始めて「ChatGPT 触ってみたけど なんか空回り」な人 あるある3つ出します\n\nOpenAIが10代専用のChatGPTを発表して 宿題の“丸投げ”も見抜く機能が話題に\n中高生向けと思いきや 大人にもヒントだらけ\n実はこれ 副業の練習にも直結するんですよね\n\n詳しく説明すると\n次で3つ例を出します",
+    "slot": "morning",
+    "kind": "news",
+    "postedAt": "2026-08-19T17:24:12.285Z",
+    "likes": 1,
+    "views": 51,
+    "replies": 2,
+    "metricsUpdatedAt": "2026-08-20T10:46:09.454Z"
   },
   {
     "postId": "18020068424879813",
@@ -56,5 +67,34 @@
     "slot": "night",
     "kind": "single",
     "postedAt": "2026-08-19T18:30:15.277Z"
+  },
+  {
+    "postId": "18012372965944390",
+    "text": "「宿題の丸投げがバレる時代だなんて 本気で思ってなかった」\nOpenAIが10代向けのChatGPT for Teensを出してきたみたい\n宿題“全部やっといて”がAIには通用しなくなる 感情面のケアも強化\n一見 大人の副業には関係ない話に見えるけど 実は逆\nわたしたちがAIを使うとき どこまで頼るか・どうバランス取るか\n今後ぜったい直面するポイントです\n\n詳しく説明すると",
+    "slot": "morning",
+    "kind": "news",
+    "postedAt": "2026-08-19T22:37:55.636Z",
+    "likes": 1,
+    "views": 54,
+    "replies": 2,
+    "metricsUpdatedAt": "2026-08-20T10:46:09.684Z"
+  },
+  {
+    "postId": "18124821913697889",
+    "text": "副業を始めたばかりの人へ\n\n「最初の1か月で0円」って\n実はわたしも通った道\n\nここから変わったのは2つだけ",
+    "slot": "evening",
+    "kind": "value",
+    "postedAt": "2026-08-20T10:46:58.408Z",
+    "likes": 0,
+    "views": 15,
+    "replies": 2,
+    "metricsUpdatedAt": "2026-08-20T11:55:26.439Z"
+  },
+  {
+    "postId": "18144833224550167",
+    "text": "才能より続ける仕組みが副業成功の鍵だとわたしは思う\n朝イチ10分だけAIを触るルールで月5万達成\n毎日決まった時間にやる派それとも空いたときだけ派",
+    "slot": "night",
+    "kind": "single",
+    "postedAt": "2026-08-20T11:55:47.442Z"
   }
 ]

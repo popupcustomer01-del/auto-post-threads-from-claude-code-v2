@@ -8,7 +8,7 @@
     "likes": 0,
     "views": 9,
     "replies": 2,
-    "metricsUpdatedAt": "2026-08-20T10:46:08.466Z"
+    "metricsUpdatedAt": "2026-08-20T22:41:16.016Z"
   },
   {
     "postId": "18154180597506457",
@@ -19,7 +19,7 @@
     "likes": 0,
     "views": 14,
     "replies": 0,
-    "metricsUpdatedAt": "2026-08-20T10:46:08.665Z"
+    "metricsUpdatedAt": "2026-08-20T22:41:16.172Z"
   },
   {
     "postId": "17905033665541344",
@@ -30,7 +30,7 @@
     "likes": 1,
     "views": 58,
     "replies": 2,
-    "metricsUpdatedAt": "2026-08-20T10:46:08.883Z"
+    "metricsUpdatedAt": "2026-08-20T22:41:16.299Z"
   },
   {
     "postId": "18113239822955543",
@@ -46,9 +46,9 @@
     "kind": "single",
     "postedAt": "2026-08-19T16:28:35.743Z",
     "likes": 0,
-    "views": 195,
+    "views": 196,
     "replies": 0,
-    "metricsUpdatedAt": "2026-08-20T10:46:09.241Z"
+    "metricsUpdatedAt": "2026-08-20T22:41:16.561Z"
   },
   {
     "postId": "18114186046969344",
@@ -57,9 +57,9 @@
     "kind": "news",
     "postedAt": "2026-08-19T17:24:12.285Z",
     "likes": 1,
-    "views": 51,
+    "views": 52,
     "replies": 2,
-    "metricsUpdatedAt": "2026-08-20T10:46:09.454Z"
+    "metricsUpdatedAt": "2026-08-20T22:41:16.728Z"
   },
   {
     "postId": "18012372965944390",
@@ -70,7 +70,7 @@
     "likes": 1,
     "views": 54,
     "replies": 2,
-    "metricsUpdatedAt": "2026-08-20T10:46:09.684Z"
+    "metricsUpdatedAt": "2026-08-20T22:41:16.952Z"
   },
   {
     "postId": "18124821913697889",
@@ -79,15 +79,26 @@
     "kind": "value",
     "postedAt": "2026-08-20T10:46:58.408Z",
     "likes": 0,
-    "views": 15,
+    "views": 19,
     "replies": 2,
-    "metricsUpdatedAt": "2026-08-20T11:55:26.439Z"
+    "metricsUpdatedAt": "2026-08-20T22:41:17.078Z"
   },
   {
     "postId": "18144833224550167",
     "text": "才能より続ける仕組みが副業成功の鍵だとわたしは思う\n朝イチ10分だけAIを触るルールで月5万達成\n毎日決まった時間にやる派それとも空いたときだけ派",
     "slot": "night",
     "kind": "single",
-    "postedAt": "2026-08-20T11:55:47.442Z"
+    "postedAt": "2026-08-20T11:55:47.442Z",
+    "likes": 1,
+    "views": 101,
+    "replies": 0,
+    "metricsUpdatedAt": "2026-08-20T22:41:17.328Z"
+  },
+  {
+    "postId": "18107781485274064",
+    "text": "AIアプリを入れても「使いこなせない」人 これ3つ経験すると今日から挫折しにくくなります\n\nGoogleがアメリカの大学生向けに\nAIサービスを1年間無料で開放するみたい\n新しいGeminiアプリには学生用の便利機能も追加されたそう\n\n勉強や副業でAIを活かしたいと思ってる人ほど\n最初は「新しい機能」に振り回されやすい\nけど これ実は誰でも通る道\n\n詳しく説明すると",
+    "slot": "morning",
+    "kind": "news",
+    "postedAt": "2026-08-20T22:42:13.296Z"
   }
 ]

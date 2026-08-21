@@ -8,7 +8,7 @@
     "likes": 0,
     "views": 9,
     "replies": 2,
-    "metricsUpdatedAt": "2026-08-20T22:41:16.016Z"
+    "metricsUpdatedAt": "2026-08-21T10:46:21.951Z"
   },
   {
     "postId": "18154180597506457",
@@ -19,7 +19,7 @@
     "likes": 0,
     "views": 14,
     "replies": 0,
-    "metricsUpdatedAt": "2026-08-20T22:41:16.172Z"
+    "metricsUpdatedAt": "2026-08-21T10:46:22.094Z"
   },
   {
     "postId": "17905033665541344",
@@ -30,7 +30,7 @@
     "likes": 1,
     "views": 58,
     "replies": 2,
-    "metricsUpdatedAt": "2026-08-20T22:41:16.299Z"
+    "metricsUpdatedAt": "2026-08-21T10:46:22.378Z"
   },
   {
     "postId": "18113239822955543",
@@ -48,7 +48,7 @@
     "likes": 0,
     "views": 196,
     "replies": 0,
-    "metricsUpdatedAt": "2026-08-20T22:41:16.561Z"
+    "metricsUpdatedAt": "2026-08-21T10:46:22.738Z"
   },
   {
     "postId": "18114186046969344",
@@ -59,7 +59,7 @@
     "likes": 1,
     "views": 52,
     "replies": 2,
-    "metricsUpdatedAt": "2026-08-20T22:41:16.728Z"
+    "metricsUpdatedAt": "2026-08-21T10:46:22.969Z"
   },
   {
     "postId": "18012372965944390",
@@ -70,7 +70,7 @@
     "likes": 1,
     "views": 54,
     "replies": 2,
-    "metricsUpdatedAt": "2026-08-20T22:41:16.952Z"
+    "metricsUpdatedAt": "2026-08-21T10:46:23.120Z"
   },
   {
     "postId": "18124821913697889",
@@ -81,7 +81,7 @@
     "likes": 0,
     "views": 19,
     "replies": 2,
-    "metricsUpdatedAt": "2026-08-20T22:41:17.078Z"
+    "metricsUpdatedAt": "2026-08-21T10:46:23.391Z"
   },
   {
     "postId": "18144833224550167",
@@ -92,13 +92,24 @@
     "likes": 1,
     "views": 101,
     "replies": 0,
-    "metricsUpdatedAt": "2026-08-20T22:41:17.328Z"
+    "metricsUpdatedAt": "2026-08-21T10:46:23.594Z"
   },
   {
     "postId": "18107781485274064",
     "text": "AIアプリを入れても「使いこなせない」人 これ3つ経験すると今日から挫折しにくくなります\n\nGoogleがアメリカの大学生向けに\nAIサービスを1年間無料で開放するみたい\n新しいGeminiアプリには学生用の便利機能も追加されたそう\n\n勉強や副業でAIを活かしたいと思ってる人ほど\n最初は「新しい機能」に振り回されやすい\nけど これ実は誰でも通る道\n\n詳しく説明すると",
     "slot": "morning",
     "kind": "news",
-    "postedAt": "2026-08-20T22:42:13.296Z"
+    "postedAt": "2026-08-20T22:42:13.296Z",
+    "likes": 0,
+    "views": 38,
+    "replies": 2,
+    "metricsUpdatedAt": "2026-08-21T10:46:23.772Z"
+  },
+  {
+    "postId": "18110884724277921",
+    "text": "スキルをつけてから始めるは遠回りです 先に動いてみてください\n\n①情報集めに1時間 ただし結局「何もやらず」に終わりがち\nChatGPTやGeminiで調べるだけで満足してしまう日 誰でも1回は通る道\n\n②Canvaの無料テンプレを10個試す でも公開ボタンは押せない\nデザインが気になって何度もやり直し 気づけば夜遅くまでパソコンの前\n\n③NotionでToDoリスト作成 初日は張り切るけど3日目には白紙\n計画ばかりで実行できず焦る このパターンも本当にあるあるですよね\n\n副業初心者の9割が最初にハマる「準備だけ」ループ\n100回言ってるけど 小さな行動1つでもいいので形に残すのがおすすめ",
+    "slot": "evening",
+    "kind": "value",
+    "postedAt": "2026-08-21T10:47:30.957Z"
   }
 ]

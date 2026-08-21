@@ -8,7 +8,7 @@
     "likes": 0,
     "views": 9,
     "replies": 2,
-    "metricsUpdatedAt": "2026-08-21T10:46:21.951Z"
+    "metricsUpdatedAt": "2026-08-21T22:37:32.954Z"
   },
   {
     "postId": "18154180597506457",
@@ -19,7 +19,7 @@
     "likes": 0,
     "views": 14,
     "replies": 0,
-    "metricsUpdatedAt": "2026-08-21T10:46:22.094Z"
+    "metricsUpdatedAt": "2026-08-21T22:37:33.207Z"
   },
   {
     "postId": "17905033665541344",
@@ -30,7 +30,7 @@
     "likes": 1,
     "views": 58,
     "replies": 2,
-    "metricsUpdatedAt": "2026-08-21T10:46:22.378Z"
+    "metricsUpdatedAt": "2026-08-21T22:37:33.501Z"
   },
   {
     "postId": "18113239822955543",
@@ -48,7 +48,7 @@
     "likes": 0,
     "views": 196,
     "replies": 0,
-    "metricsUpdatedAt": "2026-08-21T10:46:22.738Z"
+    "metricsUpdatedAt": "2026-08-21T22:37:34.061Z"
   },
   {
     "postId": "18114186046969344",
@@ -59,7 +59,7 @@
     "likes": 1,
     "views": 52,
     "replies": 2,
-    "metricsUpdatedAt": "2026-08-21T10:46:22.969Z"
+    "metricsUpdatedAt": "2026-08-21T22:37:34.411Z"
   },
   {
     "postId": "18012372965944390",
@@ -70,7 +70,7 @@
     "likes": 1,
     "views": 54,
     "replies": 2,
-    "metricsUpdatedAt": "2026-08-21T10:46:23.120Z"
+    "metricsUpdatedAt": "2026-08-21T22:37:34.612Z"
   },
   {
     "postId": "18124821913697889",
@@ -81,7 +81,7 @@
     "likes": 0,
     "views": 19,
     "replies": 2,
-    "metricsUpdatedAt": "2026-08-21T10:46:23.391Z"
+    "metricsUpdatedAt": "2026-08-21T22:37:34.896Z"
   },
   {
     "postId": "18144833224550167",
@@ -92,7 +92,7 @@
     "likes": 1,
     "views": 101,
     "replies": 0,
-    "metricsUpdatedAt": "2026-08-21T10:46:23.594Z"
+    "metricsUpdatedAt": "2026-08-21T22:37:35.159Z"
   },
   {
     "postId": "18107781485274064",
@@ -101,9 +101,9 @@
     "kind": "news",
     "postedAt": "2026-08-20T22:42:13.296Z",
     "likes": 0,
-    "views": 38,
+    "views": 42,
     "replies": 2,
-    "metricsUpdatedAt": "2026-08-21T10:46:23.772Z"
+    "metricsUpdatedAt": "2026-08-21T22:37:35.421Z"
   },
   {
     "postId": "18110884724277921",
@@ -121,6 +121,17 @@
     "text": "5分で挫折する人 続ける人\nAI副業 始めてすぐ手が止まった日 わたしは「正解の使い方」を調べすぎて逆に動けなくなったことがある\n説明書を全部読む派 サクッと試す派 今日はどっちで行く",
     "slot": "night",
     "kind": "single",
-    "postedAt": "2026-08-21T11:55:21.674Z"
+    "postedAt": "2026-08-21T11:55:21.674Z",
+    "likes": 1,
+    "views": 13,
+    "replies": 0,
+    "metricsUpdatedAt": "2026-08-21T22:37:35.796Z"
+  },
+  {
+    "postId": "18133119049658270",
+    "text": "「“今さら聞けない” Claudeの使い方 どこで学べばいい？」\nわたしも最初は「なんとなく触るだけ」で全然進まなかった派\nあのAnthropicが初心者向けに無料でClaude Academyというサイトを出したみたい\n公式が解説してるので 初めてでもつまずきポイントを飛ばせるかも\n\n副業や在宅ワークでAIを使い始めたい人\n基礎から教えてくれる場所がやっと出た感じ\n詳しく説明すると",
+    "slot": "morning",
+    "kind": "news",
+    "postedAt": "2026-08-21T22:38:33.062Z"
   }
 ]

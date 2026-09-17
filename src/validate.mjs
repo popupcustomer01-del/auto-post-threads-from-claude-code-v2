@@ -7,9 +7,18 @@
 //   （プロンプトの行数指定と検品が同じ値を共有し 基準ズレで検品NGが直らない事態を防ぐ）
 // closingKey: 枠の締め方(question=問いで終わることを要求 lp=最終行にプロフ案内を要求 それ以外は問い禁止)
 // isLastPart: ツリーの最終本かどうか(締めルールは最終本にだけ適用)
+// monologue: 独り言モード(persona.yml の tone.monologue)。true のとき
+//   「指示・命令形」「読者への呼びかけ」を機械検品で弾く。プロンプトだけだと
+//   モデルが"先生ポジション"に戻りやすいため コード側でも止める(2026-08-20)
+//   ※LP誘導締め(closing=lp)の最終行だけは お知らせ文なので売り込み検査から除外する
 export function validatePost(
   text,
-  { maxContentLines = 10, closingKey = null, isLastPart = true } = {},
+  {
+    maxContentLines = 10,
+    closingKey = null,
+    isLastPart = true,
+    monologue = false,
+  } = {},
 ) {
   const problems = [];
   const lines = String(text)
@@ -36,6 +45,20 @@ export function validatePost(
     );
   if (lines.length > maxContentLines)
     problems.push(`行数が多すぎる(空行を除き最大${maxContentLines}行にする)`);
+
+  if (monologue) {
+    if (/しましょう|してください|すべきです|みなさん|皆さん/.test(text))
+      problems.push(
+        '独り言モードなのに指示・命令形か読者への呼びかけを使っている(「わたしはこうしてる」の形に直す)',
+      );
+    // 売り込みワードはLP誘導締めの最終行だけ許す(それ以外の本文では宣伝しない)
+    if (/セミナー|講座|募集|お申し込み|申し込み|受講/.test(teaserScope))
+      problems.push('本文に告知・売り込みの言葉が入っている(本文では宣伝しない)');
+    if (closingKey === 'mutter' && isLastPart && /保存して|フォローして|やってみて|試してみて/.test(lastLine))
+      problems.push(
+        '独り言の締めなのに読者への指示・うながしで終わっている(言い切らず静かに終える)',
+      );
+  }
 
   const questionLines = lines.filter((l) => /[?？]/.test(l)).length;
   if (questionLines > 1) problems.push('問いかけが複数ある(多くても1つ)');

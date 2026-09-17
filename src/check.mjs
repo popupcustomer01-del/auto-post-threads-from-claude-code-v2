@@ -41,6 +41,7 @@ if (existsSync(briefPath)) {
 }
 const maxContentLines = brief.maxContentLines ?? 12;
 const closingKey = brief.closingKey ?? null;
+const monologue = brief.monologue === true;
 
 const isThread = Array.isArray(post.thread) && post.thread.length > 0;
 const segments = isThread ? post.thread : [post];
@@ -71,6 +72,7 @@ const textProblems = segments.flatMap((s, i) =>
     maxContentLines,
     closingKey,
     isLastPart: i === segments.length - 1,
+    monologue,
   }).map((m) => (isThread ? `${i + 1}本目: ${m}` : m)),
 );
 
